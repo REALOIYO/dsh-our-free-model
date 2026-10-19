@@ -500,9 +500,10 @@ async function toMessages(
       continue
     }
     if (type === 'reasoning') {
-      // 历史里的推理项**刻意丢弃**：它承载的是上游自家加密的思考内容
-      // （`encrypted_content`），网关既没有解密通道，也没有可回放的等价物。
-      // 与 Chat 路径一致 —— 那里的 `reasoning_content` 同样不回传上游。
+      // Responses 的 `reasoning` item 带着上游加密的 `encrypted_content`，
+      // 网关解不开，也没有可回放的明文，所以这里仍然丢弃。
+      // Chat Completions 不一样：客户端带回的是明文 `reasoning_content`，
+      // 那条在 `messages.ts` 里会进 `{ type: 'reasoning' }` 再交给适配器回传。
       continue
     }
     if (type === 'item_reference') {
