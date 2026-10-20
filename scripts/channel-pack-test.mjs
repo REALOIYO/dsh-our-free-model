@@ -268,6 +268,14 @@ async function verifySourceRegressions({ ctx, adapters, call, creds }) {
   const { verifyChannelPrFixes } = await import('./channel-pr-fixes-test.mjs')
   await verifyChannelPrFixes()
   await verifyLoopResumeEvents()
+  // 目录 `efforts` 的键序不是强度序（`dfmodel` 实测是 high/max/low），
+  // 官方客户端还会按强度稳定排序；这条回归保证下发给 DSH 的档位序也是强度序。
+  {
+    const { verifyQoderEffortOrder } = await import('./qoder-effort-order-test.mjs')
+    const { qoderEffortsFor, sortEffortsByStrength } = await import('../vendor/channel-pack/src/qoder-adapter.ts')
+    verifyQoderEffortOrder(qoderEffortsFor, sortEffortsByStrength)
+    console.log('ok  qoder effort order: 档位按强度序下发（关闭思考在最左、max 在最右），未登记 id 排末尾且保持原序')
+  }
   let hostValidate
   await realLlmInvariant.apply({ invariants: { register(_name, install) {
     install({ on(name, callback) { if (name === 'llm/stream') hostValidate = callback } },

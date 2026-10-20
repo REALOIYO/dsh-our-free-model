@@ -38720,10 +38720,14 @@ var QODER_EFFORT_NAMES = {
   xhigh: "\u6781\u9AD8",
   max: "\u6700\u5927"
 };
+var UNKNOWN_EFFORT_RANK = 100;
+function sortEffortsByStrength(efforts) {
+  return efforts.map((id, index) => ({ id, index, rank: reasoningRankOf(id) ?? UNKNOWN_EFFORT_RANK })).sort((a, b) => a.rank - b.rank || a.index - b.index).map(({ id }) => id);
+}
 function qoderEffortsFor(model) {
   const efforts = [...model.efforts ?? []];
   if (model.supportsDisable === true && !efforts.includes("none")) efforts.push("none");
-  return efforts;
+  return sortEffortsByStrength(efforts);
 }
 function resolveQueueTimeoutMs() {
   const raw = process.env.DSH_QODER_QUEUE_TIMEOUT_MS;
