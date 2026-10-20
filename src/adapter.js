@@ -23,7 +23,7 @@ import { CODE, UpstreamError, postStreamed } from './http.js'
 import { postSealedStreamed } from './eac.js'
 import { postKiloStreamed } from './kilo.js'
 import { postAggregateStreamed, isAggregateEntry } from './aggregate.js'
-import { finishReason, readStream, windowTokens } from './stream.js'
+import { finishReason, readStream, sanitizeUsage, windowTokens } from './stream.js'
 import { DEFAULT_LEVEL, MIN_BUDGET, budgetFor, defaultEffortFor, effortPatchFor, effortsFor, hasDeclaredEffortMenu, resolveLevel } from './effort.js'
 import { createChannel } from './channel.js'
 import { recoveryPolicy, canRecover, canRecoverSilentStop, recoveryMessages, continuationMessages, checkpointFits, addUsage, createBlockTracker } from './recovery.js'
@@ -528,6 +528,16 @@ export class FreeModelAdapter {
           await reader.return()
         }
         nextIndex = outcome.nextIndex
+        // Free-lane vision turns have stamped prompt/total far above the
+        // advertised window; drop that input pressure before the host meters it.
+        if (outcome?.sawUsage === true) {
+          const trusted = sanitizeUsage(outcome.usage, entry.contextWindow)
+          if (trusted === undefined) {
+            outcome = { ...outcome, sawUsage: false, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }
+          } else {
+            outcome = { ...outcome, usage: trusted }
+          }
+        }
         totalUsage = addUsage(totalUsage, outcome.usage, outcome.sawUsage)
         usageAdded = true
         if (options.signal?.aborted === true) {
@@ -617,6 +627,14 @@ export class FreeModelAdapter {
             message: expired
               ? `our free model reached its ${Math.round(timeoutMs / 1000)}s time limit before its finish token${recovering ? ', during the continuation from its checkpoint' : ''}`
               : `our free model continuation failed: ${failure.message}` }
+        }
+        if (!usageAdded && partialOutcome?.sawUsage === true) {
+          const trusted = sanitizeUsage(partialOutcome.usage, entry.contextWindow)
+          if (trusted === undefined) {
+            partialOutcome = { ...partialOutcome, sawUsage: false, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }
+          } else {
+            partialOutcome = { ...partialOutcome, usage: trusted }
+          }
         }
         if (!usageAdded) totalUsage = addUsage(totalUsage, partialOutcome?.usage, partialOutcome?.sawUsage)
         record(false, partialOutcome, { ...(recovering || expired) ? { truncated: true } : {}, ...aborted ? { aborted: true } : {} })
