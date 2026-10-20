@@ -341,6 +341,34 @@ export class FreeModelAdapter {
     let attemptBudget = budget
     let nextIndex = 0
     let totalUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+    let rejectedInputUsage = false
+    const trustedOutcome = outcome => {
+      // Only this Kilo router has a confirmed inflated multimodal stamp.
+      // Other lanes may advertise a conservative/fallback window, so exceeding
+      // that metadata alone must not erase their otherwise valid accounting.
+      if (!kilo || entry.id !== 'kilo-auto/free' || outcome?.sawUsage !== true) return outcome
+      const usage = sanitizeUsage(outcome.usage, entry.contextWindow)
+      if (usage === outcome.usage) return outcome
+      rejectedInputUsage = true
+      return usage === undefined
+        ? { ...outcome, sawUsage: false, usage: { inputTokens: 0, outputTokens: 0 } }
+        : { ...outcome, usage }
+    }
+    const collectUsage = outcome => {
+      const trusted = trustedOutcome(outcome)
+      totalUsage = addUsage(totalUsage, trusted?.usage, trusted?.sawUsage)
+      // Once one attempt's input is unknown, no sum of the other attempts can
+      // restore an exact prompt/total. Keep decode counts but let the host use
+      // its local input estimate, including after an honest continuation.
+      if (rejectedInputUsage) {
+        totalUsage = {
+          inputTokens: 0,
+          outputTokens: totalUsage.outputTokens,
+          ...totalUsage.reasoningTokens === undefined ? {} : { reasoningTokens: totalUsage.reasoningTokens },
+        }
+      }
+      return trusted
+    }
     const blocks = createBlockTracker()
     let turnRecorded = false
     const finishTurn = (ok, recovered = false, attempts = 1) => {
@@ -528,17 +556,7 @@ export class FreeModelAdapter {
           await reader.return()
         }
         nextIndex = outcome.nextIndex
-        // Free-lane vision turns have stamped prompt/total far above the
-        // advertised window; drop that input pressure before the host meters it.
-        if (outcome?.sawUsage === true) {
-          const trusted = sanitizeUsage(outcome.usage, entry.contextWindow)
-          if (trusted === undefined) {
-            outcome = { ...outcome, sawUsage: false, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }
-          } else {
-            outcome = { ...outcome, usage: trusted }
-          }
-        }
-        totalUsage = addUsage(totalUsage, outcome.usage, outcome.sawUsage)
+        outcome = collectUsage(outcome)
         usageAdded = true
         if (options.signal?.aborted === true) {
           record(false, outcome, { aborted: true })
@@ -628,15 +646,7 @@ export class FreeModelAdapter {
               ? `our free model reached its ${Math.round(timeoutMs / 1000)}s time limit before its finish token${recovering ? ', during the continuation from its checkpoint' : ''}`
               : `our free model continuation failed: ${failure.message}` }
         }
-        if (!usageAdded && partialOutcome?.sawUsage === true) {
-          const trusted = sanitizeUsage(partialOutcome.usage, entry.contextWindow)
-          if (trusted === undefined) {
-            partialOutcome = { ...partialOutcome, sawUsage: false, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }
-          } else {
-            partialOutcome = { ...partialOutcome, usage: trusted }
-          }
-        }
-        if (!usageAdded) totalUsage = addUsage(totalUsage, partialOutcome?.usage, partialOutcome?.sawUsage)
+        if (!usageAdded) partialOutcome = collectUsage(partialOutcome)
         record(false, partialOutcome, { ...(recovering || expired) ? { truncated: true } : {}, ...aborted ? { aborted: true } : {} })
         finishTurn(false, false, attempt + 1)
         for (const chunk of blocks.close()) yield chunk
@@ -653,7 +663,7 @@ export class FreeModelAdapter {
         options.signal?.removeEventListener('abort', onAbort)
         controller.abort()
         await request
-        if (!recorded) record(false, partialOutcome, { aborted: true })
+        if (!recorded) record(false, trustedOutcome(partialOutcome), { aborted: true })
         if (!continuationScheduled && !turnRecorded) finishTurn(false, false, attempt + 1)
       }
     }
