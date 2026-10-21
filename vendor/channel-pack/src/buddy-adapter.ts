@@ -44,6 +44,7 @@ import {
   registerAdapterIdempotent,
 } from './llm-register-compat.js'
 import { reportLedgerAccount } from './token-ledger.js'
+import { sanitizeTencentOutboundMessages } from './openai-gateway/tencent-fingerprint.js'
 
 /**
  * CodeBuddy（中国版）的 chat completions 基址。
@@ -1350,6 +1351,10 @@ export class BuddyAdapter extends LlmAdapter {
     if (this.product.id === 'workbuddy' && (messages.length === 0 || messages[0].role !== 'system')) {
       messages.unshift({ role: 'system', content: 'You are a helpful assistant.' })
     }
+    // 腾讯网关 11128 指纹清洗：本适配器**不经过** openai-gateway 转换层，
+    // 指纹会原样发出。必须在这里、序列化之后、发请求之前再洗一遍整个数组
+    // （含存量会话回传的 assistant 历史）。见 openai-gateway/tencent-fingerprint.ts。
+    sanitizeTencentOutboundMessages(messages, this.product.id)
     const tools = options.tools?.map((tool) => ({
       type: 'function' as const,
       function: {

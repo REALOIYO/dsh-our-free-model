@@ -91,6 +91,19 @@ const CONTENT_FINGERPRINTS: readonly ContentFingerprint[] = [
     replace: 'Main branch (PRs usually go here)',
     note: 'Gitee IKJNA1；本机 2026-10-05 对 workbuddy / CodeBuddy 双端点实测复现',
   },
+  {
+    // DSH 内核的 Web GUI 说明段。**单独出现不拦**，与 system 里其它文本组合
+    // 才拦 —— 本机 2026-10-21 用真实 11KB system 二分定位：
+    //   截断到 9778 字符 → 200；截断到 9779（结尾正好是 `this GUI.`）→ 400
+    //   纯字母填充到 20000 字符 → 200（排除长度阈值）
+    //   完整 system 把本短语换成 `DSH` / `DeepSeek` → 200（三种改法均通过）
+    // 上游 issue #544/#560/#568/#570 都定位到「DSH 身份句」，但 DSH 0.2.1-rc.2
+    // 实际生成的是 `You are a coding agent powered by the <model> model.`，
+    // 不含那句 —— 直连路径上真正生效的是本规则。
+    find: 'DeepSeek Harness',
+    replace: 'DSH',
+    note: '本机 2026-10-21 实测：完整 system 替换后直连 200（9778/9779 二分定位）',
+  },
 ]
 
 /** 正则元字符转义：把字面量安全地变成**精确**匹配，而不是模式。 */
@@ -141,4 +154,69 @@ export function rewriteTencentContentFingerprints(text: string, provider: string
     out = out.replace(rule.pattern, rule.replace)
   }
   return out
+}
+
+/** 最小的 wire 消息形态：只关心 role 与文本字段，不绑定调用方的具体类型。 */
+interface WireMessageLike {
+  role?: unknown
+  content?: unknown
+  reasoning_content?: unknown
+}
+
+/**
+ * 直连路径的**出站**清洗。
+ *
+ * ## 为什么需要它（与上面 `rewriteTencentContentFingerprints` 的分工）
+ *
+ * 那个函数只被 `openai-gateway` 的转换层调用（`convertMessage` /
+ * `toResponsesGenerateOptions`）。DSH **直接选 `buddy` provider** 时走
+ * `BuddyAdapter.stream()`，完全不经过转换层，指纹会原样发出 → 必中 11128。
+ *
+ * ## 三条约束（上游 #570 实测 + 本机 2026-10-21 复验）
+ *
+ * 1. **遍历整个数组**，不只 `messages[0]`：identity 段在桌面端是数组里独立的
+ *    一条 system 消息，且存量会话的 assistant 历史里也会回传带指纹的内容；
+ * 2. **只动非 user / 非 tool**：实测同一句放进 user / tool 不拦，改写它们只会
+ *    白白破坏用户原话与工具输出；
+ * 3. **未命中即原样**：`rewriteTencentContentFingerprints` 已有 `includes` 预检，
+ *    不命中返回同一份字符串，不会给服务端前缀缓存制造无谓失效。
+ *
+ * @param messages wire 数组（`serializeMessages` 的产物），**就地**清洗
+ * @param provider `this.product.id`
+ * @returns 同一个数组引用
+ */
+export function sanitizeTencentOutboundMessages<T extends WireMessageLike>(
+  messages: T[],
+  provider: string,
+): T[] {
+  if (!isTencentContentFingerprintProvider(provider)) return messages
+  if (!Array.isArray(messages)) return messages
+  for (const raw of messages) {
+    const message = raw as WireMessageLike
+    if (message === null || typeof message !== 'object') continue
+    if (message.role === 'user' || message.role === 'tool') continue
+    if (typeof message.content === 'string' && message.content.length > 0) {
+      message.content = rewriteTencentContentFingerprints(message.content, provider)
+      // 兜底：字面量规则对空白变体敏感。上游按「开头前缀 + 忽略大小写 + 忽略
+      // 末尾标点」判定，换行/多空格重排会让精确子串失配却仍被拦。
+      if (/deepseek\s+harness/i.test(message.content)) {
+        message.content = message.content
+          .replace(
+            /you\s+are\s+an\s+ai\s+agent\s+powered\s+by\s+deepseek\s+harness/gi,
+            'You are an AI coding assistant',
+          )
+          .replace(
+            /you\s+are\s+an\s+ai\s+agent\s+from\s+deepseek\s+harness/gi,
+            'You are an AI coding assistant',
+          )
+      }
+    }
+    if (typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0) {
+      message.reasoning_content = rewriteTencentContentFingerprints(
+        message.reasoning_content,
+        provider,
+      )
+    }
+  }
+  return messages
 }
