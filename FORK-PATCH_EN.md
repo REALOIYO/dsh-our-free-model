@@ -139,3 +139,7 @@ this fork.
 - Upstream: https://github.com/Ebony-Vinyl/dsh-our-free-model
 - Related issues: #544 #560 #568 #570 (fingerprint), #571 (2.5.8), #574 (restore, unmerged)
 - License: same as upstream (MIT), see `LICENSE`
+
+---
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

@@ -126,3 +126,7 @@ node scripts/build-channel-pack.mjs    # 需要 esbuild，非本包 devDependenc
 - 上游仓库：https://github.com/Ebony-Vinyl/dsh-our-free-model
 - 相关 issue：#544 #560 #568 #570（指纹定位）、#571（2.5.8）、#574（恢复渠道，未合并）
 - 许可证：与上游一致（MIT），见 `LICENSE`
+
+---
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
