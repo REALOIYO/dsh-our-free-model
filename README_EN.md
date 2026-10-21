@@ -1,3 +1,21 @@
+> ## ⚠️ Personal fork — not an official release
+>
+> | | |
+> |---|---|
+> | Upstream | [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) |
+> | This repo | `REALOIYO/dsh-our-free-model`, maintained on branch **`fix/codebuddy-11128`** |
+> | Baseline | **`v2.5.3`** (not `main`, not `v2.5.8`) |
+> | Change | Only fixes the `buddy` (CodeBuddy) channel being blocked by Tencent's gateway with `HTTP 400 / code 11128` — 83 lines of source |
+> | Details | **[FORK-PATCH_EN.md](FORK-PATCH_EN.md)** |
+>
+> **Install from the branch**: `github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128`
+>
+> Everything below is the upstream README verbatim. Its **plugin-market links, community
+> groups, sponsorships and update channels all point upstream**. This fork offers no
+> official support; see `FORK-PATCH_EN.md` for what it actually does and does not cover.
+>
+> ---
+
 <div align="center">
   <img src="icon.svg" alt="Our Free Model — free model provider plugin for DeepSeek Harness" width="120">
 
@@ -99,6 +117,11 @@ the picker by itself as soon as a probe gets through.
 **First-run announcement** — a five-page walkthrough (preamble, model roster, how to use, what it does, news & upgrades) that acknowledges once and never reappears until the copy version is bumped.
 
 ## Install
+
+> **⚠️ This section is upstream text verbatim — every Release / tarball it points to
+> belongs to the upstream repository.** To install this fork, use the branch spec
+> `github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128`, or simply overwrite
+> `vendor/channel-pack/pack.js`. See [FORK-PATCH_EN.md](FORK-PATCH_EN.md).
 
 > **⚠️ Do not install this plugin from npm.**
 >

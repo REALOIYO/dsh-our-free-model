@@ -1,3 +1,20 @@
+> ## ⚠️ 这是个人 fork，不是官方版本
+>
+> | 项 | 值 |
+> |---|---|
+> | 上游 | [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) |
+> | 本仓库 | `REALOIYO/dsh-our-free-model`，维护分支 **`fix/codebuddy-11128`** |
+> | 基线 | **`v2.5.3`**（不是 `main`，也不是 `v2.5.8`） |
+> | 改动 | 仅修 `buddy`（CodeBuddy）渠道被腾讯网关拦截的 `HTTP 400 / code 11128`，源码 83 行 |
+> | 详情 | **[FORK-PATCH.md](FORK-PATCH.md)** |
+>
+> **安装请认分支**：`github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128`
+>
+> 下方为上游原始 README，其中 **插件市场入口、交流群、赞助、更新渠道均指向上游**，
+> 本 fork 不提供官方支持。本 fork 的实际能力与边界以 `FORK-PATCH.md` 为准。
+>
+> ---
+
 <div align="center">
   <img src="icon.svg" alt="Our Free Model — DeepSeek Harness 免费模型插件" width="120">
 
@@ -113,6 +130,10 @@ Chat Completions、Responses API，以及独立网页管理（模型、统计、
 独立服务的安装制品与 Release 尚未发布。
 
 ## 安装
+
+> **⚠️ 本节是上游原文，安装命令指向的 Release / tarball 全部属于上游仓库。**
+> 在本 fork 里安装请用分支地址 `github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128`，
+> 或只覆盖 `vendor/channel-pack/pack.js`。详见 [FORK-PATCH.md](FORK-PATCH.md)。
 
 > **⚠️ 不要通过 npm 安装本插件。**
 >
