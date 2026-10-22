@@ -63401,6 +63401,11 @@ function gatewaySource() {
 function createGatewayMessage(role, content, source) {
   return { id: randomUUID9(), role, content, source };
 }
+function inboundReasoning(value) {
+  const raw = typeof value.reasoning_content === "string" ? value.reasoning_content : typeof value.reasoning === "string" ? value.reasoning : void 0;
+  if (raw === void 0 || raw.length === 0) return void 0;
+  return raw;
+}
 function convertToolCalls(raw) {
   if (!Array.isArray(raw)) throw new OpenAiGatewayError("assistant.tool_calls must be an array");
   return raw.map((value) => {
@@ -63428,7 +63433,10 @@ async function convertMessage(raw, provider, model, bridge, limits) {
   }
   if (role === "assistant") {
     const text = textFromContent(value.content);
-    const content = text.length > 0 ? [{ type: "text", text }] : [];
+    const content = [];
+    const reasoning = inboundReasoning(value);
+    if (reasoning !== void 0) content.push({ type: "reasoning", text: reasoning });
+    if (text.length > 0) content.push({ type: "text", text });
     if (value.tool_calls !== void 0) content.push(...convertToolCalls(value.tool_calls));
     return createGatewayMessage("assistant", content, { kind: "model", provider, model });
   }
