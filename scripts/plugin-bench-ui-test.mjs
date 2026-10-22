@@ -24,9 +24,9 @@ class Node {
   addEventListener() {}
   get firstElementChild() { return this.children[0] }
 }
-function boot({ storage = new Map(), failStorage = false, fetchImpl } = {}) {
+function boot({ storage = new Map(), failStorage = false, fetchImpl, observeVisibility = false } = {}) {
   let bundle, cursor = 0, tree, dirty = true
-  const cells = [], effects = [], listeners = new Map(), frames = new Map(), timers = [], calls = []
+  const cells = [], effects = [], listeners = new Map(), frames = new Map(), timers = [], calls = [], observers = []
   const html = new Node('html'), head = html.appendChild(new Node('head')), body = html.appendChild(new Node('body'))
   const matches = (node, selector) => {
     const className = selector.match(/^\.([\w-]+)/)?.[1]
@@ -77,6 +77,11 @@ function boot({ storage = new Map(), failStorage = false, fetchImpl } = {}) {
   react.useCallback = (fn, deps) => react.useMemo(() => fn, deps)
   vm.runInNewContext(source, {
     window, document, URL, AbortController,
+    IntersectionObserver: observeVisibility ? class {
+      constructor(callback) { this.callback = callback; observers.push(this) }
+      observe(node) { this.node = node }
+      disconnect() { this.disconnected = true }
+    } : undefined,
     CustomEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options) } },
     setTimeout: (fn, delay) => { const timer = { fn, delay }; timers.push(timer); return timer }, clearTimeout() {},
     setInterval: () => 1, clearInterval() {},
@@ -96,11 +101,12 @@ function boot({ storage = new Map(), failStorage = false, fetchImpl } = {}) {
     do {
       if (++passes > 30) throw new Error('hook render loop')
       dirty = false; cursor = 0; tree = component(props)
+      if (tree?.props?.ref && !tree.props.ref.current) tree.props.ref.current = new Node()
       for (const effect of effects.splice(0)) effect()
     } while (dirty)
     return tree
   }
-  return { api, plugin, t, draw, document, window, frames, timers, calls, storage,
+  return { api, plugin, t, draw, document, window, frames, timers, calls, storage, observers,
     root(className = 'ofm_root') { const node = new Node(); node.className = className; body.appendChild(node); return node },
     dispose() { for (const cell of cells) cell?.cleanup?.() },
   }
@@ -199,6 +205,22 @@ await check('disabled decorative number motion schedules no animation frame', ()
   const app = boot()
   assert.equal(app.draw(() => app.api.useCountUp(234, false)), 234)
   assert.equal(app.frames.size, 0); app.dispose()
+})
+
+await check('empty or offscreen aquariums pause, filled visible aquariums resume, and observers disconnect', () => {
+  const app = boot({ observeVisibility: true })
+  let tree = app.draw(app.api.Tank, { pct: 60 })
+  assert.equal(tree.props['data-ofm-motion'], 'on'); assert.equal(app.observers.length, 1)
+  const observer = app.observers[0]
+  observer.callback([{ isIntersecting: false }]); tree = app.draw(app.api.Tank, { pct: 60 })
+  assert.equal(tree.props['data-ofm-motion'], 'off')
+  observer.callback([{ isIntersecting: true }]); tree = app.draw(app.api.Tank, { pct: 60 })
+  assert.equal(tree.props['data-ofm-motion'], 'on')
+  tree = app.draw(app.api.Tank, { pct: 0 })
+  assert.equal(tree.props['data-ofm-motion'], 'off'); assert.equal(tree.props.style['--lvl'], '0%')
+  assert.equal(observer.disconnected, true)
+  tree = app.draw(app.api.Tank, { pct: 30 }); assert.equal(tree.props['data-ofm-motion'], 'on')
+  app.dispose(); assert.equal(app.observers[1].disconnected, true)
 })
 
 console.log(checks + ' plugin benchmark UI checks passed')

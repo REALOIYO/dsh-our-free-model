@@ -2349,6 +2349,7 @@ window.__ModuleLoader__.load({
 .ofm_root[data-ofm-effects="off"] :is(.ofm_recoglow,.ofm_recostarring){display:none!important}
 .ofm_root[data-ofm-effects="off"] :not(.ofm_tank):not(.ofm_tank *):is(:hover,:active){transform:none!important}
 .ofm_root[data-ofm-effects="off"] :is(.ofm_btn,.ofm_starbtn)::after{content:none!important}
+.ofm_tank[data-ofm-motion="off"] *{animation-play-state:paused!important}
 .ofm_root[data-ofm-active="false"] *,
 .ofm_root[data-ofm-active="false"] *::before,
 .ofm_root[data-ofm-active="false"] *::after{animation-play-state:paused!important}
@@ -2988,12 +2989,23 @@ window.__ModuleLoader__.load({
      */
     function Tank(props) {
       const { pct, level = 'ok', size, label } = props
+      const filled = Number(pct) > 0
+      const tankRef = useRef(null)
+      const [visible, setVisible] = useState(true)
+      useEffect(() => {
+        if (!filled || typeof IntersectionObserver !== 'function' || !tankRef.current) return undefined
+        const observer = new IntersectionObserver(entries => setVisible(entries.some(entry => entry.isIntersecting)))
+        observer.observe(tankRef.current)
+        return () => observer.disconnect()
+      }, [filled])
       const fish = ['f1', 'f2', 'f3'].map(name => h('i', { className: `ofm_fish ${name}`, key: name },
         h('svg', { viewBox: '0 0 24 14' }, h('path', { d: FISH_PATH }))))
       const bubbles = ['b1', 'b2', 'b3', 'b4', 'b5'].map(name => h('i', { className: `ofm_bubble ${name}`, key: name }))
       if (pct === null || pct === undefined) return null
       return h('div', {
         className: `ofm_tank ${level}${size === 'xl' ? ' xl' : ''}`,
+        ref: tankRef,
+        'data-ofm-motion': filled && visible ? 'on' : 'off',
         role: 'img',
         'aria-label': label ?? `${pct}%`,
         style: { '--lvl': `${Math.max(0, Math.min(100, pct))}%` },
