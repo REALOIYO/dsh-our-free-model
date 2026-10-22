@@ -295,15 +295,18 @@ export async function startStandalone({
     }
     function refreshModels(force = false) {
       if (refreshInFlight) return refreshInFlight
-      refreshInFlight = runtime.refreshCatalog({ probe: settings.get().standaloneProbe === true, force })
+      // Automatic availability probing is disabled by owner policy: periodic and
+      // boot refreshes only reload the listing. The management "probe" action
+      // still asks for an explicit probe through the runtime API.
+      refreshInFlight = runtime.refreshCatalog({ probe: false, force })
         .catch(error => {
           if (!stopped) logger.warn?.(`our-free-model standalone: catalog refresh failed (${error?.message ?? error})`)
         })
         .finally(() => { refreshInFlight = undefined; scheduleRefresh() })
       return refreshInFlight
     }
-    // 启动可强制探测；后续周期刷新遵守核心的限流退避。
-    const ready = Promise.all([channels.ready, refresh ? refreshModels(settings.get().standaloneProbe === true) : Promise.resolve()])
+    // 启动与周期刷新只更新清单，不自动探测；手动“探测可用性”仍走运行时 API。
+    const ready = Promise.all([channels.ready, refresh ? refreshModels(false) : Promise.resolve()])
     return {
       product: PRODUCT, version: VERSION, dataDir,
       url: `http://${host === '::1' ? '[::1]' : host}:${listener.port}`,

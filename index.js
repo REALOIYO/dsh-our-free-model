@@ -428,9 +428,10 @@ export function apply(ctx, config) {
   // Advertise a probe endpoint for the in-app "detect models" button. It offers
   // what the picker itself advertises — a model the gateway refuses to route at
   // all must not be addable to a profile just because it still appears in the
-  // upstream listing.
+  // upstream listing. Automatic availability probing is disabled by owner
+  // policy, so discovery refreshes the listing only.
   ctx.llm.registerModelDiscovery?.(ctx.fiber?.entry?.options?.id ?? name, async () => {
-    await refreshCatalog({ probe: true, force: true })
+    await refreshCatalog({ probe: false, force: true })
     const advertised = new Set(Object.values(state().membership).flat())
     return modelRuntime.catalog
       .filter(entry => advertised.has(entry.id))
@@ -449,9 +450,8 @@ export function apply(ctx, config) {
 
   /**
    * A freshly started outlet needs a moment before its nodes carry traffic: the
-   * first read comes back empty, and a re-probe fired on that cold path would
-   * record "unavailable" for models the new exit would have unlocked. Retry a
-   * few times and let the re-probe run only once the exit answers.
+   * first read comes back empty. Retry a few times so the settings page gets a
+   * reading; no availability probe is fired here (automatic probing is off).
    */
   async function settleOutletWatch() {
     let lastError
@@ -1474,7 +1474,7 @@ export function apply(ctx, config) {
       // topology event and the upgrade marker below down with it, reported as
       // a single "startup refresh failed" line.
       try {
-        await refreshCatalog({ probe: true, force: true })
+        await refreshCatalog({ probe: false, force: true })
       } catch (error) {
         logger.warn?.(`our-free-model: startup refresh failed (${error?.message ?? error})`)
       }
@@ -1505,9 +1505,9 @@ export function apply(ctx, config) {
    * stopped the whole plugin from activating. `timer` is not worth declaring on a
    * headless composition, and the mixin adds nothing here beyond `setTimeout` plus
    * a disposer: it must not hold the process open, and `disposed` ends it when the
-   * fiber goes away. Without any loop the availability probe would run once at
-   * boot, so a model that throttled, recovered, or moved behind the region gate
-   * would keep the picker position it was first given.
+   * fiber goes away. Without any loop the catalog would be read once at boot,
+   * so a model added, removed or renamed upstream would keep its boot-time
+   * position until a manual refresh.
    */
   // `ms` may be a function: the period is re-read on every re-arm, so an
   // interval changed on the settings page takes effect from the next cycle
@@ -1531,14 +1531,14 @@ export function apply(ctx, config) {
       if (hours > 0) void updater.check().then(() => pushUpdate(false)).catch(() => {})
     }, () => positiveOr(settings.get().feedPollMinutes, 30, 5) * 60_000)
   }
-  // The probe period is in minutes, and one minute is the floor — a value of 0 or
-  // a negative one would otherwise spin. This used to read `Math.max(60, …)`,
-  // which floored every interval below an hour *including the shipped default of
-  // 15*, so the number on the settings page was silently ignored.
+  // Automatic availability probing is disabled by owner policy. This loop only
+  // refreshes the listing and reads the egress; the interval keeps its setting
+  // name for upgrade compatibility. `/reprobe` is the only path that still asks
+  // for a probe, and it is driven by a manual button.
   every(() => {
     void (async () => {
       await watchEgress()
-      await refreshCatalog({ probe: true })
+      await refreshCatalog({ probe: false })
     })().catch(error => logger.warn?.(`our-free-model: periodic refresh failed (${error?.message ?? error})`))
   }, () => positiveOr(settings.get().probeIntervalMinutes, 15, 1) * 60_000)
   // A failing egress watch means the network is down, which is worth one line —
@@ -1938,7 +1938,8 @@ export function createApiRoutes(deps) {
         return send(200, { ok: true, settings: publicSettings(deps.settings.get(), deps.forwardInfo(), deps.egressInfo()) })
       }
       if (method === 'POST' && routePath === '/refresh') {
-        await deps.refreshCatalog({ probe: true, force: true })
+        // A listing refresh must not turn into a probe round; only /reprobe does.
+        await deps.refreshCatalog({ probe: false, force: true })
         return send(200, { ok: true, ...buildSummary(deps) })
       }
       if (method === 'POST' && routePath === '/reprobe') {

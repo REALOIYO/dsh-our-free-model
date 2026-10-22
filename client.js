@@ -34,7 +34,7 @@ window.__ModuleLoader__.load({
     const DICT = {
       zh: {
         'meta.title': 'Our Free Model',
-        'meta.description': '在 DeepSeek Harness 内直连免密免费模型：清单随上游更新、地区可用性自动探测、思考强度真实生效，并附 Token 看板与 OpenAI 兼容转发端口。',
+        'meta.description': '在 DeepSeek Harness 内直连免密免费模型：清单随上游更新、地区可用性按需探测、思考强度真实生效，并附 Token 看板与 OpenAI 兼容转发端口。',
         'ann.pitch': '你只需在 dsh 里装上这个插件，无需登录、注册、填 API Key 或任何其它操作，就能用上包括 Muse Spark 1.3、MiMo V2.6 在内的前沿模型——完全免费，不限量。',
         nav: 'Our Free Model',
         title: 'Our Free Model',
@@ -236,7 +236,7 @@ window.__ModuleLoader__.load({
         'visibility.hint': '隐藏仅影响模型选择器和网关清单，不影响历史会话；仍可在这里恢复显示。',
         'routing.capacity': '链路能力交集',
         'routing.capacityUnavailable': '暂时无法读取链路能力交集，请重试。',
-        'pref.interval': '自动探测间隔（分钟）',
+        'pref.interval': '自动刷新间隔（分钟）',
         'pref.maxTokens': '单次输出上限（token）',
         'pref.egress': '当前出口',
         'pref.probedAt': '最近探测',
@@ -719,7 +719,7 @@ window.__ModuleLoader__.load({
       },
       en: {
         'meta.title': 'Our Free Model',
-        'meta.description': 'Free no-key models inside DeepSeek Harness: a roster that follows upstream, live regional availability, genuinely enforced thinking levels, a token dashboard and an OpenAI-compatible local forward port.',
+        'meta.description': 'Free no-key models inside DeepSeek Harness: a roster that follows upstream, on-demand regional availability, genuinely enforced thinking levels, a token dashboard and an OpenAI-compatible local forward port.',
         'ann.pitch': 'All you do is install this plugin in dsh — no login, no sign-up, no API key, no other step of any kind. The frontier models are simply there, Muse Spark 1.3 and MiMo V2.6 among them. Completely free, with no usage cap.',
         nav: 'Our Free Model',
         title: 'Our Free Model',
@@ -921,7 +921,7 @@ window.__ModuleLoader__.load({
         'visibility.hint': 'Hiding affects the model picker and gateway listing only. Existing sessions keep working; restore visibility here.',
         'routing.capacity': 'Chain capability intersection',
         'routing.capacityUnavailable': 'Cannot load chain capacities right now. Please retry.',
-        'pref.interval': 'Auto-probe interval (minutes)',
+        'pref.interval': 'Auto-refresh interval (minutes)',
         'pref.maxTokens': 'Output ceiling per call (tokens)',
         'pref.egress': 'Current egress',
         'pref.probedAt': 'Last probe',

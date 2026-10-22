@@ -76,7 +76,6 @@ export function createModelRuntime({
   let gatewayLatency = { ms: 0, at: 0 }
   let disposed = false
   const lifetime = new AbortController()
-  let reprobeTimer
 
   /**
    * Rebuild the merged catalog from its parts, in precedence order.
@@ -131,16 +130,8 @@ export function createModelRuntime({
     },
     recordTurn: record => { if (!disposed) recordTurn(stats, record) },
     warn: message => logger.warn?.(message) ?? logger.log?.(message),
-    onRegionBlocked: () => {
-      if (disposed || reprobeTimer !== undefined) return
-      reprobeTimer = setTimeout(() => {
-        reprobeTimer = undefined
-        if (!disposed) void refreshAvailability(true).catch(error => {
-          logger.warn?.(`our-free-model: region reprobe failed (${error?.message ?? error})`)
-        })
-      }, 4000)
-      reprobeTimer.unref?.()
-    },
+    // Automatic probing is disabled by owner policy: a region refusal from a
+    // real turn stays a turn failure and never fires a background probe.
   })
 
   // 手动强制刷新不能借用一个因限流而跳过探测的普通刷新。
@@ -148,7 +139,10 @@ export function createModelRuntime({
   let catalogRefreshForced = false
   let catalogRefreshProbed = false
   async function refreshCatalog(opts) {
-    const { probe = true, force = false } = opts ?? {}
+    // Automatic probing is disabled by owner policy: `probe` defaults to false
+    // and every automatic caller passes false. Only an explicit user action (the
+    // reprobe button or an explicit caller) asks for `probe: true`.
+    const { probe = false, force = false } = opts ?? {}
     if (disposed) return catalog
     while (catalogRefresh !== null) {
       const shared = catalogRefresh
@@ -322,8 +316,10 @@ export function createModelRuntime({
     if (changed) {
       availability.update({ egress: seen })
       availability.flush()
-      logger.info?.(`our-free-model: egress changed to ${seen.ip}${seen.country ? ` (${seen.country})` : ''}; re-probing availability`)
-      await refreshAvailability(true)
+      // Automatic probing is disabled by owner policy: an egress change is only
+      // recorded. The last measured verdicts stay in place until the user
+      // explicitly re-probes.
+      logger.info?.(`our-free-model: egress changed to ${seen.ip}${seen.country ? ` (${seen.country})` : ''}; availability left unchanged`)
     }
     return true
   }
@@ -358,7 +354,6 @@ export function createModelRuntime({
       if (disposed) return
       disposed = true
       lifetime.abort()
-      clearTimeout(reprobeTimer)
     },
   }
 }

@@ -159,7 +159,9 @@ export const SETTINGS_INITIAL = {
   hiddenModelIds: [],
   hideFreeModels: false,
   hideEacModels: false,
-  /** Minutes between background availability re-probes. */
+  /** Minutes between background catalog refreshes. Automatic availability
+   *  probing is disabled by owner policy; only the manual reprobe button sends
+   *  probe requests. */
   probeIntervalMinutes: 15,
   /** Serve the OpenAI-compatible forward listener for other local harnesses. */
   forward: {
