@@ -1,7 +1,10 @@
 # 本 fork 说明（非官方）
 
 > **这是 [`Ebony-Vinyl/dsh-our-free-model`](https://github.com/Ebony-Vinyl/dsh-our-free-model)
-> 的个人 fork，只做一件事：修好 `buddy`（腾讯 CodeBuddy）渠道的 `code 11128` 拦截。**
+> 的个人 fork，基于 `v2.5.3` 做两件事：**
+>
+> 1. **修好 `buddy`（腾讯 CodeBuddy）渠道的 `code 11128` 拦截**（本 fork 独有）
+> 2. **选择性同步上游与 buddy 无关的修复**（已摘 8 个，见下方「上游同步记录」）
 >
 > 不是官方发布，不代表上游立场，不提供官方支持，也不会向上游提 PR。
 
@@ -10,13 +13,87 @@
 | 项 | 值 |
 |---|---|
 | 本仓库 | `https://github.com/REALOIYO/dsh-our-free-model` |
-| 维护分支 | **`fix/codebuddy-11128`** |
+| 维护分支 | **`fix/codebuddy-11128`**（已设为仓库默认分支） |
 | 基线 | tag **`v2.5.3`**（commit `e465d73`） |
-| 补丁 commit | `834afe6` |
-| 改动量 | 源码 83 行 + 重新生成的 `vendor/channel-pack/pack.js` |
-| 验证环境 | DSH `0.2.1-rc.2` 桌面版 · Windows 11 · OFM `2.5.3` |
+| 提交总数 | **15 个**（1 条 buddy 补丁 + 3 条早期 cherry-pick + 8 条上游同步 + 3 条文档/构建） |
+| 改动规模 | **42 个文件 · +2579 / −694 行**（含重新生成的 `pack.js`） |
+| 验证环境 | DSH **`0.2.1-rc.3`** 桌面版 · Windows 11 · OFM `2.5.3` |
 
 `main` 分支只是上游镜像，**不包含任何本 fork 的修改**。
+
+## 全部提交清单（相对 `v2.5.3`）
+
+| # | commit | 内容 | 来源 |
+|---|---|---|---|
+| 1 | `834afe6` | buddy 11128 指纹清洗 | **本 fork 独有** |
+| 2 | `32cadab` | 文档标注个人 fork | 本 fork |
+| 3 | `8680afa` | powered by dsh 徽章 | 本 fork |
+| 4 | `ebba3c2` | preserve forwarded Chat reasoning | cherry-pick 上游 #484 |
+| 5 | `8782fa3` | Chat 历史回传 reasoning_content | cherry-pick 上游 #472 |
+| 6 | `caf8b96` | updater rollback 重命名重试 | cherry-pick 上游 #503 |
+| 7 | `a58b688` | 重建 `pack.js` 产物 | 本 fork |
+| 8 | `4a30774` | 丢弃超出窗口的 free-lane usage 标记 | 上游同步 |
+| 9 | `3ebc72d` | qoder 思考档位按强度序下发 | 上游同步 |
+| 10 | `0c61097` | 禁用所有自动可用性探测请求 | 上游同步 |
+| 11 | `77f85be` | 修正异常计数累积，限定 Kilo 路由 | 上游同步 |
+| 12 | `577702b` | 新增视觉特效开关 | 上游同步 |
+| 13 | `9c87bf0` | 鱼缸动画暂停（空缸 / 视口外） | 上游同步 |
+| 14 | `da02dad` | 接入 FleetRelay 线上模型网关 | 上游同步 |
+| 15 | `332dcc3` | 旧出口判定失效 + 迟到结果隔离 | 上游同步 |
+
+## 上游同步记录（8 个）
+
+这 8 个提交与 buddy **无任何交集**，摘入后不改变本 fork 的 buddy 行为：
+
+| commit | 内容 | 摘取理由 |
+|---|---|---|
+| `0c61097` | 禁用所有自动可用性探测请求 | **降低 IP 被封风险**（上游 issue #581：自动探测会导致封禁） |
+| `332dcc3` | 旧出口判定失效 + 迟到结果隔离 | 与上一条配套；防止旧出口的在途探测结果污染新出口 |
+| `4a30774` | 丢弃超出窗口的 free-lane usage 标记 | 用量统计准确 |
+| `77f85be` | 修正异常计数累积，限定 Kilo 路由 | 同上 |
+| `3ebc72d` | qoder 思考档位按强度序下发 | 修正「越往右越弱」的档位 UI 错乱 |
+| `577702b` | 新增视觉特效开关 | 界面可关闭动画 |
+| `9c87bf0` | 鱼缸动画暂停（空缸 / 视口外） | 降低空闲占用 |
+| `da02dad` | 接入 FleetRelay 线上模型网关 | 新增渠道 |
+
+> 早期 cherry-pick 的 `ebba3c2` / `8782fa3` / `caf8b96` 三项，对应上游 #484 / #472 / #503，
+> **patch-id 与上游完全一致**，属于原样搬入。
+
+## ⚠️ 与上游的策略分歧
+
+上游自 `v2.5.8` 起**移除了 `buddy`（CodeBuddy 国内版）与 `workbuddy`（国际版）两个渠道**
+（PR #555、#577）。
+
+移除原因（上游自己的说明）：
+
+- issue **#576「律师函」** —— 声称代表权利人，将 `tencent-fingerprint.ts` 与
+  `buddy-adapter.ts` 列为「专用于避开技术措施」的装置
+- issue **#624** 维护者回复：「反代现在有可能封号啊」「WorkBuddy 风控强度大，
+  所有反代插件作者都在避风头」
+
+**本 fork 主动保留这两个渠道**，不跟随上游的移除动作。
+因此：
+
+| 项 | 本 fork | 上游 |
+|---|---|---|
+| 渠道数 | **13** | 10 |
+| buddy / workbuddy | ✅ 保留 | ❌ 已移除 |
+
+**这是预期差异，不是 bug。** 若看到渠道数与上游不同，属正常。
+
+## ⚠️ 安装 / 更新注意
+
+本仓库 `package.json` 的版本号仍是 `2.5.3`，但**内容已不同于上游同版本**。
+`v2.5.3` 这个号只表示基线来源，不表示与上游该 tag 完全一致。
+
+- **安装**：认分支 `#fix/codebuddy-11128`
+  ```
+  github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128
+  ```
+  **不要用 `main`** —— 那是纯上游镜像，不含任何本 fork 改动
+- **已在用的人**：若执行 `pnpm install` / `pnpm update`，插件会被 pnpm 按
+  `dependencies` 里的 specifier 还原成上游原版，**buddy 补丁与 8 个修复会全部丢失**。
+  届时需重新安装本分支。
 
 ## 为什么要做这个 fork
 

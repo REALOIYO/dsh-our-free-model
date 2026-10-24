@@ -1,9 +1,11 @@
 # Fork notes (unofficial)
 
 > **This is a personal fork of
-> [`Ebony-Vinyl/dsh-our-free-model`](https://github.com/Ebony-Vinyl/dsh-our-free-model).
-> It does exactly one thing: fix the `code 11128` block on the `buddy`
-> (Tencent CodeBuddy) channel.**
+> [`Ebony-Vinyl/dsh-our-free-model`](https://github.com/Ebony-Vinyl/dsh-our-free-model),
+> based on `v2.5.3`. It does two things:**
+>
+> 1. **Fix the `code 11128` block on the `buddy` (Tencent CodeBuddy) channel** — unique to this fork
+> 2. **Selectively sync upstream fixes unrelated to buddy** — 8 taken so far, see "Upstream sync" below
 >
 > Not an official release. Does not represent upstream. No official support.
 > No pull request will be filed upstream.
@@ -13,13 +15,92 @@
 | | |
 |---|---|
 | This repo | `https://github.com/REALOIYO/dsh-our-free-model` |
-| Maintained branch | **`fix/codebuddy-11128`** |
+| Maintained branch | **`fix/codebuddy-11128`** (set as the repository default) |
 | Baseline | tag **`v2.5.3`** (commit `e465d73`) |
-| Patch commit | `834afe6` |
-| Diff size | 83 lines of source + regenerated `vendor/channel-pack/pack.js` |
-| Verified on | DSH `0.2.1-rc.2` desktop · Windows 11 · OFM `2.5.3` |
+| Commits | **15** (1 buddy patch + 3 early cherry-picks + 8 upstream syncs + 3 docs/build) |
+| Diff size | **42 files · +2579 / −694 lines** (including the regenerated `pack.js`) |
+| Verified on | DSH **`0.2.1-rc.3`** desktop · Windows 11 · OFM `2.5.3` |
 
 `main` is only a mirror of upstream — it carries **none** of this fork's changes.
+
+## All commits (relative to `v2.5.3`)
+
+| # | commit | What | Origin |
+|---|---|---|---|
+| 1 | `834afe6` | buddy 11128 fingerprint scrubbing | **fork-only** |
+| 2 | `32cadab` | docs: mark this repo as a personal fork | this fork |
+| 3 | `8680afa` | powered by dsh badge | this fork |
+| 4 | `ebba3c2` | preserve forwarded Chat reasoning | cherry-pick upstream #484 |
+| 5 | `8782fa3` | echo `reasoning_content` in Chat history | cherry-pick upstream #472 |
+| 6 | `caf8b96` | updater rollback rename retry | cherry-pick upstream #503 |
+| 7 | `a58b688` | rebuild `pack.js` | this fork |
+| 8 | `4a30774` | drop free-lane usage stamps above the advertised window | upstream sync |
+| 9 | `3ebc72d` | order qoder thinking efforts by strength | upstream sync |
+| 10 | `0c61097` | disable all automatic availability probing | upstream sync |
+| 11 | `77f85be` | fix inflated usage counters, scope to Kilo | upstream sync |
+| 12 | `577702b` | add a visual-effects toggle | upstream sync |
+| 13 | `9c87bf0` | pause fish-tank animation (empty / offscreen) | upstream sync |
+| 14 | `da02dad` | add the FleetRelay model gateway | upstream sync |
+| 15 | `332dcc3` | invalidate stale egress verdicts, isolate late results | upstream sync |
+
+## Upstream sync (8 commits)
+
+None of these touch buddy, so taking them leaves this fork's buddy behaviour unchanged:
+
+| commit | What | Why taken |
+|---|---|---|
+| `0c61097` | disable all automatic availability probing | **lowers IP-ban risk** (upstream issue #581: auto-probing gets IPs banned) |
+| `332dcc3` | invalidate stale egress verdicts, isolate late results | pairs with the above; stops in-flight probes from a previous egress poisoning the new one |
+| `4a30774` | drop free-lane usage stamps above the advertised window | accurate usage accounting |
+| `77f85be` | fix inflated usage counters, scope to Kilo | same |
+| `3ebc72d` | order qoder thinking efforts by strength | fixes the inverted "weaker towards the right" effort UI |
+| `577702b` | add a visual-effects toggle | animations can be turned off |
+| `9c87bf0` | pause fish-tank animation (empty / offscreen) | lower idle cost |
+| `da02dad` | add the FleetRelay model gateway | new channel |
+
+> The three early cherry-picks (`ebba3c2` / `8782fa3` / `caf8b96`) correspond to
+> upstream #484 / #472 / #503 and carry **identical patch-ids** — verbatim imports.
+
+## ⚠️ Divergence from upstream
+
+Upstream **removed both the `buddy` (CodeBuddy CN) and `workbuddy` (INTL) channels**
+starting with `v2.5.8` (PR #555, #577).
+
+Upstream's stated reasons:
+
+- issue **#576 "legal letter"** — claims to represent the rights holder and names
+  `tencent-fingerprint.ts` and `buddy-adapter.ts` as devices "solely for circumventing technical measures"
+- issue **#624**, maintainer reply: reverse proxies risk account bans, and
+  "WorkBuddy risk control is aggressive; every reverse-proxy plugin author is lying low"
+
+**This fork deliberately keeps both channels** and does not follow the removal.
+
+| | This fork | Upstream |
+|---|---|---|
+| Channel count | **13** | 10 |
+| buddy / workbuddy | ✅ kept | ❌ removed |
+
+**This is an expected difference, not a bug.** A channel count that differs from
+upstream is normal here.
+
+## ⚠️ Install / update notes
+
+The `package.json` version stays at `2.5.3`, but the **contents differ from upstream's
+same version**. The `v2.5.3` label only records where the baseline came from; it does
+not mean this tree equals upstream's tag.
+
+- **Install**: pin the branch
+  ```
+  github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128
+  ```
+  **Do not use `main`** — that is a pure upstream mirror with none of this fork's changes
+- **Already installed**: running `pnpm install` / `pnpm update` will make pnpm restore
+  the plugin to upstream's release per the specifier in `dependencies`, **wiping the
+  buddy patch and all 8 synced fixes**. Reinstall this branch afterwards.
+
+## Why this fork exists
+
+Select any CodeBuddy (`buddy` channel) model in DSH and every message returns:
 
 ## Why the fork exists
 

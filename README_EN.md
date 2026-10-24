@@ -3,9 +3,12 @@
 > | | |
 > |---|---|
 > | Upstream | [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) |
-> | This repo | `REALOIYO/dsh-our-free-model`, maintained on branch **`fix/codebuddy-11128`** |
-> | Baseline | **`v2.5.3`** (not `main`, not `v2.5.8`) |
-> | Change | Only fixes the `buddy` (CodeBuddy) channel being blocked by Tencent's gateway with `HTTP 400 / code 11128` — 83 lines of source |
+> | This repo | `REALOIYO/dsh-our-free-model`, maintained on branch **`fix/codebuddy-11128`** (default branch) |
+> | Baseline | **`v2.5.3`** (commit `e465d73`) |
+> | Diff size | **15 commits · 42 files · +2579 / −694 lines** (including the regenerated `pack.js`) |
+> | Fork-only change | Fixes the `buddy` (CodeBuddy) channel blocked by Tencent's gateway with `HTTP 400 / code 11128` |
+> | Upstream sync | **8** upstream fixes unrelated to buddy taken (see below) |
+> | Verified on | DSH **`0.2.1-rc.3`** desktop · Windows 11 · OFM `2.5.3` |
 > | Details | **[FORK-PATCH_EN.md](FORK-PATCH_EN.md)** |
 >
 > **Install from the branch**: `github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128`
@@ -13,6 +16,52 @@
 > Everything below is the upstream README verbatim. Its **plugin-market links, community
 > groups, sponsorships and update channels all point upstream**. This fork offers no
 > official support; see `FORK-PATCH_EN.md` for what it actually does and does not cover.
+>
+> ---
+>
+> ### Two things this fork maintains
+>
+> **1. buddy channel patch (fork-only)**
+>
+> Fixes the `buddy` direct path being rejected by Tencent's gateway with `code 11128`.
+> The root cause is that outbound messages carry the literal `DeepSeek Harness`
+> fingerprint, which the gateway rejects on a character-by-character match. This fork
+> scrubs it on the outbound path in `buddy-adapter.ts` (returning the original string
+> when no rule matches, so the KV prefix cache survives).
+>
+> **2. Selective upstream sync (8 taken)**
+>
+> | commit | What | Why taken |
+> |---|---|---|
+> | `0c61097` | disable all automatic availability probing | **lowers IP-ban risk** (upstream issue #581) |
+> | `332dcc3` | invalidate stale egress verdicts, isolate late results | pairs with the above |
+> | `4a30774` | drop free-lane usage stamps above the window | accurate usage accounting |
+> | `77f85be` | fix inflated usage counters, scope to Kilo | same |
+> | `3ebc72d` | order qoder thinking efforts by strength | fixes the inverted effort UI |
+> | `577702b` | add a visual-effects toggle | animations can be turned off |
+> | `9c87bf0` | pause fish-tank animation (empty / offscreen) | lower idle cost |
+> | `da02dad` | add the FleetRelay model gateway | new channel |
+>
+> Three earlier cherry-picks (`ebba3c2` / `8782fa3` / `caf8b96`) correspond to
+> upstream #484 / #472 / #503 and carry **identical patch-ids**.
+>
+> ### ⚠️ Divergence from upstream
+>
+> Upstream **removed both the `buddy` (CodeBuddy CN) and `workbuddy` (INTL) channels**
+> starting with `v2.5.8` (PR #555, #577). Reasons per upstream: issue #576 "legal letter"
+> and issue #624's maintainer reply about aggressive risk control.
+>
+> **This fork deliberately keeps both channels.** Channel count is **13** here versus
+> **10** upstream — an expected difference, not a bug.
+>
+> ### ⚠️ Install / update notes
+>
+> The `package.json` version stays at `2.5.3`, but the contents differ from upstream's
+> same version.
+>
+> - Install: pin `#fix/codebuddy-11128`, **not `main`** (a pure upstream mirror)
+> - Already installed: `pnpm install` / `pnpm update` will restore upstream's release and
+>   **wipe the buddy patch and all 8 synced fixes** — reinstall this branch afterwards
 >
 > ---
 
