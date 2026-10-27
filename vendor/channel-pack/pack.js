@@ -34639,6 +34639,39 @@ var CONTENT_FINGERPRINTS = [
     find: "DeepSeek Harness",
     replace: "DSH",
     note: "\u672C\u673A 2026-10-21 \u5B9E\u6D4B\uFF1A\u5B8C\u6574 system \u66FF\u6362\u540E\u76F4\u8FDE 200\uFF089778/9779 \u4E8C\u5206\u5B9A\u4F4D\uFF09"
+  },
+  {
+    // DSH 内核的 `@` 路径说明段（`system-prompt` 的 `@` 约定段）。
+    //
+    // ⚠️ 与上面两条的关键差别：**单独出现就会拦**，不需要与其它文本组合。
+    // 本机 2026-10-27 用真实 11KB system 复现：补丁两条规则都命中并改写后
+    // （11061 → 11035 字符）请求**仍然 400 / 11128**，说明规则表漏了一条。
+    // 二分（`_tmp/20261027-230600-bounds-11128.mjs`）：
+    //   长度 110 → 200；长度 111 → 400（起点固定在 system 第 2214 字符）
+    // 故指纹即本规则 `find` 的这 111 个字符，到 `workspace root` 为止，
+    // 后面的 `; absolute paths …` 不属于指纹。
+    //
+    // 改写方案实发对比（12 组，见 `_tmp/20261027-230700-alts-11128.mjs`）：
+    //   | 探针 | 结果 |
+    //   |---|---|
+    //   | 原文 | ❌ 400/11128 |
+    //   | 全小写 / 全大写 | ❌ 400/11128 |
+    //   | **换语序 `referenced explicitly`** | ✅ 200 |
+    //   | `explicit`→`direct` | ✅ 200 |
+    //   | `are`→`denote` | ✅ 200 |
+    //   | `prefixed with @`→`starting with @` | ✅ 200 |
+    //   | 多一个空格 | ✅ 200 |
+    //   | 句号→分号 | ✅ 200 |
+    //   | 只留前半句 / 只留后半句 | ✅ 200 |
+    // 规律与上面两条一致：服务端认**逐字符字面量**，大小写不敏感，
+    // 差一个词或一个空格即放行 —— 不能泛化成正则或关键词。
+    //
+    // 选「换语序」而非删句子：字符数不变（111 → 111），语义完全等价
+    // （`explicitly referenced` 与 `referenced explicitly` 同义），
+    // 且是本表里改动面最小的方案。
+    find: "Tokens prefixed with @ are paths the user explicitly referenced. Relative paths resolve from the workspace root",
+    replace: "Tokens prefixed with @ are paths the user referenced explicitly. Relative paths resolve from the workspace root",
+    note: "\u672C\u673A 2026-10-27 \u5B9E\u6D4B\uFF1A\u6E05\u6D17\u540E\u4ECD 400\uFF0C\u4E8C\u5206\u5B9A\u4F4D 2214\u20132325\uFF08111 \u5B57\u7B26\uFF09\uFF1B\u5355\u72EC\u51FA\u73B0\u5373\u62E6\uFF1B\u6362\u8BED\u5E8F\u540E 200"
   }
 ];
 function escapeRegExp(literal) {
@@ -38192,6 +38225,74 @@ function qoderProductById(id) {
   return ALL_QODER_PRODUCTS.find((product) => product.id === id);
 }
 
+// vendor/channel-pack/src/reasoning-ladder.ts
+var REASONING_EFFORT_RANK = Object.freeze({
+  off: 0,
+  none: 0,
+  minimal: 1,
+  light: 2,
+  low: 3,
+  medium: 4,
+  high: 5,
+  // 「开启思考」没有强度语义 —— 与 high 同序，使它在规范名里反查成 `high`。
+  on: 5,
+  extra_high: 6,
+  xhigh: 7,
+  max: 8,
+  ultra: 9
+});
+var CANONICAL_REASONING_EFFORTS = Object.freeze([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra"
+]);
+function reasoningRankOf(effort) {
+  return Object.prototype.hasOwnProperty.call(REASONING_EFFORT_RANK, effort) ? REASONING_EFFORT_RANK[effort] : void 0;
+}
+function isThinkingOffEffort(effort) {
+  return reasoningRankOf(effort) === 0;
+}
+function translateReasoningEffort(requested, declared) {
+  if (declared.includes(requested)) return { kind: "exact", effort: requested };
+  const rank = reasoningRankOf(requested);
+  if (rank === void 0) return { kind: "unknown" };
+  const wantOff = rank === 0;
+  let best;
+  for (const candidate of declared) {
+    const candidateRank = reasoningRankOf(candidate);
+    if (candidateRank === void 0) continue;
+    if (candidateRank === 0 !== wantOff) continue;
+    const distance = Math.abs(candidateRank - rank);
+    if (best === void 0 || distance < best.distance || distance === best.distance && candidateRank > best.rank) {
+      best = { effort: candidate, distance, rank: candidateRank };
+    }
+  }
+  if (best === void 0) return { kind: "unexpressible" };
+  return { kind: "mapped", effort: best.effort, requested, rank };
+}
+function canonicalReasoningEffortFor(effort) {
+  if (CANONICAL_REASONING_EFFORTS.includes(effort)) return effort;
+  const rank = reasoningRankOf(effort);
+  if (rank === void 0) return void 0;
+  const wantOff = rank === 0;
+  let best;
+  for (const canonical of CANONICAL_REASONING_EFFORTS) {
+    const canonicalRank = reasoningRankOf(canonical);
+    if (canonicalRank === void 0) continue;
+    if (canonicalRank === 0 !== wantOff) continue;
+    const distance = Math.abs(canonicalRank - rank);
+    if (best === void 0 || distance < best.distance || distance === best.distance && canonicalRank > best.rank) {
+      best = { canonical, distance, rank: canonicalRank };
+    }
+  }
+  return best?.canonical;
+}
+
 // vendor/channel-pack/src/openai-compat.ts
 import { LlmError as LlmError6, ToolCallId as ToolCallId4 } from "@deepseek-ai/dsh-llm";
 function contentToText4(content) {
@@ -39273,74 +39374,6 @@ function registerQoderLlm(ctx, options) {
 // vendor/channel-pack/src/trae-adapter.ts
 import { LlmAdapter as LlmAdapter5, LlmError as LlmError8, ReasoningEffortId as ReasoningEffortId5 } from "@deepseek-ai/dsh-llm";
 import { ToolCallId as ToolCallId5 } from "@deepseek-ai/dsh-llm";
-
-// vendor/channel-pack/src/reasoning-ladder.ts
-var REASONING_EFFORT_RANK = Object.freeze({
-  off: 0,
-  none: 0,
-  minimal: 1,
-  light: 2,
-  low: 3,
-  medium: 4,
-  high: 5,
-  // 「开启思考」没有强度语义 —— 与 high 同序，使它在规范名里反查成 `high`。
-  on: 5,
-  extra_high: 6,
-  xhigh: 7,
-  max: 8,
-  ultra: 9
-});
-var CANONICAL_REASONING_EFFORTS = Object.freeze([
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-  "ultra"
-]);
-function reasoningRankOf(effort) {
-  return Object.prototype.hasOwnProperty.call(REASONING_EFFORT_RANK, effort) ? REASONING_EFFORT_RANK[effort] : void 0;
-}
-function isThinkingOffEffort(effort) {
-  return reasoningRankOf(effort) === 0;
-}
-function translateReasoningEffort(requested, declared) {
-  if (declared.includes(requested)) return { kind: "exact", effort: requested };
-  const rank = reasoningRankOf(requested);
-  if (rank === void 0) return { kind: "unknown" };
-  const wantOff = rank === 0;
-  let best;
-  for (const candidate of declared) {
-    const candidateRank = reasoningRankOf(candidate);
-    if (candidateRank === void 0) continue;
-    if (candidateRank === 0 !== wantOff) continue;
-    const distance = Math.abs(candidateRank - rank);
-    if (best === void 0 || distance < best.distance || distance === best.distance && candidateRank > best.rank) {
-      best = { effort: candidate, distance, rank: candidateRank };
-    }
-  }
-  if (best === void 0) return { kind: "unexpressible" };
-  return { kind: "mapped", effort: best.effort, requested, rank };
-}
-function canonicalReasoningEffortFor(effort) {
-  if (CANONICAL_REASONING_EFFORTS.includes(effort)) return effort;
-  const rank = reasoningRankOf(effort);
-  if (rank === void 0) return void 0;
-  const wantOff = rank === 0;
-  let best;
-  for (const canonical of CANONICAL_REASONING_EFFORTS) {
-    const canonicalRank = reasoningRankOf(canonical);
-    if (canonicalRank === void 0) continue;
-    if (canonicalRank === 0 !== wantOff) continue;
-    const distance = Math.abs(canonicalRank - rank);
-    if (best === void 0 || distance < best.distance || distance === best.distance && canonicalRank > best.rank) {
-      best = { canonical, distance, rank: canonicalRank };
-    }
-  }
-  return best?.canonical;
-}
 
 // vendor/channel-pack/src/trae.ts
 import { createHash as createHash3 } from "node:crypto";

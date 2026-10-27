@@ -104,6 +104,39 @@ const CONTENT_FINGERPRINTS: readonly ContentFingerprint[] = [
     replace: 'DSH',
     note: '本机 2026-10-21 实测：完整 system 替换后直连 200（9778/9779 二分定位）',
   },
+  {
+    // DSH 内核的 `@` 路径说明段（`system-prompt` 的 `@` 约定段）。
+    //
+    // ⚠️ 与上面两条的关键差别：**单独出现就会拦**，不需要与其它文本组合。
+    // 本机 2026-10-27 用真实 11KB system 复现：补丁两条规则都命中并改写后
+    // （11061 → 11035 字符）请求**仍然 400 / 11128**，说明规则表漏了一条。
+    // 二分（`_tmp/20261027-230600-bounds-11128.mjs`）：
+    //   长度 110 → 200；长度 111 → 400（起点固定在 system 第 2214 字符）
+    // 故指纹即本规则 `find` 的这 111 个字符，到 `workspace root` 为止，
+    // 后面的 `; absolute paths …` 不属于指纹。
+    //
+    // 改写方案实发对比（12 组，见 `_tmp/20261027-230700-alts-11128.mjs`）：
+    //   | 探针 | 结果 |
+    //   |---|---|
+    //   | 原文 | ❌ 400/11128 |
+    //   | 全小写 / 全大写 | ❌ 400/11128 |
+    //   | **换语序 `referenced explicitly`** | ✅ 200 |
+    //   | `explicit`→`direct` | ✅ 200 |
+    //   | `are`→`denote` | ✅ 200 |
+    //   | `prefixed with @`→`starting with @` | ✅ 200 |
+    //   | 多一个空格 | ✅ 200 |
+    //   | 句号→分号 | ✅ 200 |
+    //   | 只留前半句 / 只留后半句 | ✅ 200 |
+    // 规律与上面两条一致：服务端认**逐字符字面量**，大小写不敏感，
+    // 差一个词或一个空格即放行 —— 不能泛化成正则或关键词。
+    //
+    // 选「换语序」而非删句子：字符数不变（111 → 111），语义完全等价
+    // （`explicitly referenced` 与 `referenced explicitly` 同义），
+    // 且是本表里改动面最小的方案。
+    find: 'Tokens prefixed with @ are paths the user explicitly referenced. Relative paths resolve from the workspace root',
+    replace: 'Tokens prefixed with @ are paths the user referenced explicitly. Relative paths resolve from the workspace root',
+    note: '本机 2026-10-27 实测：清洗后仍 400，二分定位 2214–2325（111 字符）；单独出现即拦；换语序后 200',
+  },
 ]
 
 /** 正则元字符转义：把字面量安全地变成**精确**匹配，而不是模式。 */
