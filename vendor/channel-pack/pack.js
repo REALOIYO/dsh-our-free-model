@@ -41061,12 +41061,16 @@ var TraeAdapter = class extends LlmAdapter5 {
                     const promptTokens = typeof ev.usage.prompt_tokens === "number" ? ev.usage.prompt_tokens : 0;
                     const completionTokens = typeof ev.usage.completion_tokens === "number" ? ev.usage.completion_tokens : 0;
                     const reasoningTokens = typeof ev.usage.reasoning_tokens === "number" ? ev.usage.reasoning_tokens : void 0;
+                    const cacheReadTokens = typeof ev.usage.cache_read_input_tokens === "number" ? ev.usage.cache_read_input_tokens : void 0;
+                    const cacheWriteTokens = typeof ev.usage.cache_creation_input_tokens === "number" ? ev.usage.cache_creation_input_tokens : void 0;
                     yield {
                       type: "usage",
                       usage: {
                         inputTokens: promptTokens,
                         outputTokens: completionTokens,
-                        ...reasoningTokens !== void 0 && reasoningTokens > 0 ? { reasoningTokens } : {}
+                        ...reasoningTokens !== void 0 && reasoningTokens > 0 ? { reasoningTokens } : {},
+                        ...cacheReadTokens !== void 0 && cacheReadTokens > 0 ? { cacheReadTokens } : {},
+                        ...cacheWriteTokens !== void 0 && cacheWriteTokens > 0 ? { cacheWriteTokens } : {}
                       }
                     };
                   }

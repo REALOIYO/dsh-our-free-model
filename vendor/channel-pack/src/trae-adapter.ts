@@ -1506,12 +1506,32 @@ export class TraeAdapter extends LlmAdapter {
                     const promptTokens = typeof ev.usage.prompt_tokens === 'number' ? ev.usage.prompt_tokens : 0
                     const completionTokens = typeof ev.usage.completion_tokens === 'number' ? ev.usage.completion_tokens : 0
                     const reasoningTokens = typeof ev.usage.reasoning_tokens === 'number' ? ev.usage.reasoning_tokens : undefined
+                    // 缓存计量：上游用 `cache_read_input_tokens` /
+                    // `cache_creation_input_tokens` 这两个**非 OpenAI 标准**的
+                    // 名字报，且是 `prompt_tokens` 的子集。
+                    //
+                    // 曾经只取 prompt/completion/reasoning 三个字段，把这两个
+                    // 直接丢了 —— 结果 DSH 侧缓存永远显示 0（用户报障「一直 0
+                    // 缓存」）。但上游**确实在缓存**：实测同一段 prompt 连发
+                    // 三次，第三次回 `cache_read_input_tokens: 9216`（不是 0）。
+                    // 丢字段只是让界面看不见，不影响实际命中。
+                    //
+                    // 参考实现见 dingminhua/dsh-connect-trae 的
+                    // docs/ISSUE10_DIAGNOSIS.md（同一条 bug 的取证）。
+                    const cacheReadTokens =
+                      typeof ev.usage.cache_read_input_tokens === 'number' ? ev.usage.cache_read_input_tokens : undefined
+                    const cacheWriteTokens =
+                      typeof ev.usage.cache_creation_input_tokens === 'number'
+                        ? ev.usage.cache_creation_input_tokens
+                        : undefined
                     yield {
                       type: 'usage',
                       usage: {
                         inputTokens: promptTokens,
                         outputTokens: completionTokens,
                         ...reasoningTokens !== undefined && reasoningTokens > 0 ? { reasoningTokens } : {},
+                        ...cacheReadTokens !== undefined && cacheReadTokens > 0 ? { cacheReadTokens } : {},
+                        ...cacheWriteTokens !== undefined && cacheWriteTokens > 0 ? { cacheWriteTokens } : {},
                       },
                     }
                   }
