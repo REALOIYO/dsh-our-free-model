@@ -102,23 +102,36 @@
   多账号时插件会自动换号；若某账号长期占满，可在 Channel Pack 里把它拖到后面
 
 
-## trae 缓存：字段补了，但上游本机不给值（本 fork 独有）
+## trae 缓存恒 0：根因是上游没分配缓存池（本 fork 独有）
 
-### 补了什么
+### 现象
 
-`trae-adapter.ts` 的 `token_usage` 分支原先只取 `prompt_tokens` /
-`completion_tokens` / `reasoning_tokens`，把上游那两个**非 OpenAI 标准**的
-`cache_read_input_tokens` / `cache_creation_input_tokens` 直接丢了。
-现已搬运到 `cacheReadTokens` / `cacheWriteTokens`（仅 > 0 时才带，不给
-从不报缓存的模型伪造字段）。
+用户报障「trae 一直没有缓存命中」。账本里 `trae` 133 个请求 / 1310 万 input
+token，`cacheReadTokens` 恒为 0；同一时段 `codearts`（97 万）、`qodercn`
+（1968 万）、`workbuddy`（9653 万）都正常非 0 —— DSH 侧显示与上报链路没问题。
 
-### 但这不是「缓存坏了」的原因
+### 根因
 
-2026-11-04 实测：**补上搬运后本机 trae 的 cacheRead 仍然是 0**。
+**上游 `llm_utils_chat` 根本没给这些请求分配前缀缓存池。**
 
-取证方式：按 `dingminhua/dsh-connect-trae` 的 `docs/ISSUE10_DIAGNOSIS.md`
-原样复刻其复现脚本的请求形态（PREFIX 预热 → PREFIX+SUFFIX → 逐字节相同，
-`role:'user'` 单条消息、无 system），覆盖：
+上游在 `metadata` 事件里用 `prompt_cache_pool_record` 声明这件事，本机实测
+三个轮次**全部为 `null`**：
+
+```
+metadata: prompt_cache_pool_record=null | keys=model,session_id,
+  prompt_completion_id,ab_versions,app_version,ide_version,
+  ide_version_type,prompt_cache_pool_record
+timing_cost: name=llm_raw_chat_v2 provider_model_name=glm-5.2
+```
+
+`null` 是**真实值**，语义是「没挂缓存池」；没有池，`cache_read_input_tokens`
+只能是 0。所以 0% 命中率是**正确读数**。
+
+### 取证
+
+按 `dingminhua/dsh-connect-trae` 的 `docs/ISSUE10_DIAGNOSIS.md` 原样复刻其
+复现脚本的请求形态（PREFIX 预热 → PREFIX+SUFFIX → 逐字节相同，`role:'user'`
+单条消息、无 system），覆盖：
 
 | 维度 | 取值 |
 |---|---|
@@ -126,26 +139,41 @@
 | 模型 | `glm-5.2`、`deepseek-v4.1-flash`、`Doubao-Seed-2.1-Pro` |
 | 通道 | `solo_agent`、`solo_work_lite` |
 
-`prompt_tokens` **精确复现**了该文档的 `5258 / 9224 / 9224`，证明请求形态
-与取证条件一致；但 `cache_read_input_tokens` 恒为 0，从未出现该文档记录的
-`5248 / 9216`。同一时刻本机 `codearts` / `qodercn` / `workbuddy` 的
-cacheRead 均非 0，DSH 侧上报链路正常。
+`prompt_tokens` **精确复现**了该文档的 `5258 / 9224 / 9224`，证明请求形态与
+取证条件完全一致；但 `cache_read_input_tokens` 恒为 0，从未出现该文档记录的
+`5248 / 9216`。
 
-原始响应（本机，逐字节）：
+这与上游仓库自己的 **issue #67**（2026-10-28）结论一致：它用同一份脚本原样
+重跑，同样得到 `0 / 0 / 0`，并归因为「上游不再为这些请求分配 prompt cache 池」。
+该 issue 还实测证明：加速感来自**整请求精确复用**（同一条请求重发 TTFT
+3097→1207ms），共享 25k 前缀的不同请求依旧冷启动 —— 前缀缓存实际上是关着的，
+而整请求复用不产生任何 `cached_tokens`。
 
-```json
-{"name":"","prompt_tokens":9224,"completion_tokens":177,"total_tokens":9401,
- "cache_creation_input_tokens":0,"cache_read_input_tokens":0,"reasoning_tokens":171,
- "prompt_tokens_total":0,"completion_tokens_total":0,"total_tokens_total":0,
- "cache_creation_input_tokens_total":0,"cache_read_input_tokens_total":0,
- "reasoning_tokens_total":0,"cluster":"normal_context"}
-```
+### 本 fork 的改动
+
+1. **字段搬运**（必要）：`token_usage` 的 `cache_read_input_tokens` /
+   `cache_creation_input_tokens` 搬到 `cacheReadTokens` / `cacheWriteTokens`
+   （仅 > 0 时才带，不给从不报缓存的模型伪造字段）。上游哪天恢复分配池，
+   数字会自动显示，无需再改代码。
+2. **解码诊断事件**（对齐上游 #67）：`parseTraeSSELine` 原先 `switch` 里没有
+   `metadata` / `timing_cost` 分支，两个事件被静默丢弃 —— 功能上无害，但把
+   「上游没给池」这个唯一可观测事实一并丢了，于是「缓存恒 0」无法与「插件
+   丢字段」区分。现解码为 `promptCachePoolRecord` / `pipeline` /
+   `providerModelName`。
+3. **区分 `null` 与 `undefined`**：前者是上游明确说「没给池」，后者是字段
+   不存在。用 `=== undefined` 判断，绝不能用真值判断。
+4. **上报**：流结束时打 `trae: upstream request diagnostics`，附带
+   `cachePoolAttached`（直接给结论，省得看日志的人再推一遍）。
+   诊断事件**不产生任何 chunk**，不参与 `gotAnyContent`，不改变流语义。
+5. 新增回归测试 `scripts/trae-diagnostics-test.mjs`（7 项），锁死上面三点。
 
 ### 结论
 
-- 字段搬运是**必要**的：上游一旦报值，不搬就等于界面恒 0；
-- 但本机这条通道的上游当前**不返回非 0 缓存**，属上游行为，适配器无法凭空造出来；
-- 所以「修完还是 0」不是回归，不要再去翻适配器代码。
+- 「修完还是 0」**不是回归**，不要再翻适配器代码；
+- 若哪天 `metadata.prompt_cache_pool_record` 非空，`cached_tokens` 会自动
+  恢复显示，插件侧无需再改；
+- 日志里出现 `upstream request diagnostics` 且 `cachePoolAttached: false`
+  即可确认当时的真实情况。
 
 
 ## 上游同步记录（8 个）

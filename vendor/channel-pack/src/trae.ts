@@ -1730,6 +1730,22 @@ export interface TraeSSEEvent {
   finishReason?: string
   errorCode?: number
   errorMessage?: string
+  /**
+   * `metadata.prompt_cache_pool_record` —— 上游**唯一**能说明「这次请求有没有
+   * 挂前缀缓存池」的信号。
+   *
+   * `null` 是实测到的真实值（本机 2026-11-04 三个轮次全部为 `null`），语义是
+   * 「上游没分配缓存池」；它与「字段不存在」（`undefined`）**必须区分**：
+   * 前者说明 `cache_read_input_tokens` 只能是 0，后者说明上游没告诉我们。
+   *
+   * 没有它，用户无法区分「上游没给池」和「插件把数字丢了」—— 这正是
+   * dingminhua/dsh-connect-trae 的 issue #67 与用户报障「一直 0 缓存」的观感来源。
+   */
+  promptCachePoolRecord?: unknown
+  /** `timing_cost.name`，实际管线名（本机实测恒为 `llm_raw_chat_v2`）。 */
+  pipeline?: string
+  /** `timing_cost.provider_model_name`，真正作答的模型。 */
+  providerModelName?: string
 }
 
 /**
@@ -1764,6 +1780,19 @@ export function parseTraeSSELine(eventName: string, dataLine: string): TraeSSEEv
       break
     case 'token_usage':
       ev.usage = raw
+      break
+    case 'metadata':
+    case 'timing_cost':
+      // 两个都是纯诊断事件：不带答案文本、不带 usage，故**绝不能**让它们
+      // 变成 delta/usage。原先这里没有分支，它们被静默丢弃 —— 功能上无害，
+      // 但把「上游没分配缓存池」这个可观测事实一并丢了，于是「缓存恒 0」
+      // 无法与「插件丢字段」区分（见 TraeSSEEvent.promptCachePoolRecord）。
+      //
+      // ⚠️ `null` 与 `undefined` 必须区分：前者是上游明确说「没给池」，
+      // 后者是字段不存在。故用 `=== undefined` 判断，不能用真值判断。
+      if (raw.prompt_cache_pool_record !== undefined) ev.promptCachePoolRecord = raw.prompt_cache_pool_record
+      if (typeof raw.name === 'string') ev.pipeline = raw.name
+      if (typeof raw.provider_model_name === 'string') ev.providerModelName = raw.provider_model_name
       break
     case 'done':
       if (typeof raw.finish_reason === 'string') ev.finishReason = raw.finish_reason

@@ -40128,6 +40128,12 @@ function parseTraeSSELine(eventName, dataLine) {
     case "token_usage":
       ev.usage = raw;
       break;
+    case "metadata":
+    case "timing_cost":
+      if (raw.prompt_cache_pool_record !== void 0) ev.promptCachePoolRecord = raw.prompt_cache_pool_record;
+      if (typeof raw.name === "string") ev.pipeline = raw.name;
+      if (typeof raw.provider_model_name === "string") ev.providerModelName = raw.provider_model_name;
+      break;
     case "done":
       if (typeof raw.finish_reason === "string") ev.finishReason = raw.finish_reason;
       break;
@@ -40930,6 +40936,7 @@ var TraeAdapter = class extends LlmAdapter5 {
     let currentData = "";
     let gotAnyContent = false;
     let sawAnyUpstreamEvent = false;
+    const cacheDiagnostics = {};
     const reader = response.body.getReader();
     const decoder2 = new TextDecoder();
     let firstTokenReceived = false;
@@ -41076,6 +41083,14 @@ var TraeAdapter = class extends LlmAdapter5 {
                   }
                   break;
                 }
+                case "metadata":
+                case "timing_cost":
+                  if (ev.promptCachePoolRecord !== void 0) {
+                    cacheDiagnostics.promptCachePoolRecord = ev.promptCachePoolRecord;
+                  }
+                  if (ev.pipeline !== void 0) cacheDiagnostics.pipeline = ev.pipeline;
+                  if (ev.providerModelName !== void 0) cacheDiagnostics.providerModelName = ev.providerModelName;
+                  break;
                 case "done":
                   if (ev.finishReason !== void 0) {
                     finishReason2 = ev.finishReason;
@@ -41186,6 +41201,15 @@ var TraeAdapter = class extends LlmAdapter5 {
       options.maxTokens,
       "reasoning"
     ) } : loopDetected ? { kind: "max-tokens" } : finishReason2 === "length" || finishReason2 === void 0 && toolOrder.length > 0 || argsTruncated || proseCutByStopString || droppedUnnamedCalls && toolOrder.length === 0 ? { kind: "max-tokens" } : finishReason2 === "tool_calls" || toolOrder.length > 0 ? { kind: "tool-calls" } : { kind: "stop" };
+    if (this.options.log !== void 0 && Object.keys(cacheDiagnostics).length > 0) {
+      this.options.log("warn", "trae: upstream request diagnostics", {
+        model: options.model,
+        ...cacheDiagnostics,
+        // 直接给出结论，省得看日志的人再推一遍：
+        // null = 上游没分配前缀缓存池 → cacheRead 必然为 0，与本插件无关。
+        cachePoolAttached: cacheDiagnostics.promptCachePoolRecord !== null
+      });
+    }
     yield { type: "finish", reason: resolveEmptyResponseReason(reason, blockCount) };
   }
 };
@@ -68716,7 +68740,12 @@ function apply(ctx, config = {}) {
     // 但模态按模型判定（远端 `display_config.multimodal`），故这里只负责读字节。
     readImage: makeReadImage(ctx),
     accountPool: pool,
-    product: TRAE
+    product: TRAE,
+    // 上游诊断上报（缓存池是否分配、实际管线、作答模型）。
+    // 见 trae-adapter.ts 的 `cacheDiagnostics` 与 FORK-PATCH.md。
+    log: (level, message2, detail) => {
+      if (level === "warn") ctx.logger.warn(message2, detail);
+    }
   });
   const cline = new ClineAuth(ctx, { fetcher: network.fetch });
   let activeClineAccountId = "";

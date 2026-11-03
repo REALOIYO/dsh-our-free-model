@@ -874,6 +874,11 @@ export function apply(ctx: Context, config: { disableOpencode?: boolean; outlet?
     readImage: makeReadImage(ctx),
     accountPool: pool,
     product: TRAE,
+    // 上游诊断上报（缓存池是否分配、实际管线、作答模型）。
+    // 见 trae-adapter.ts 的 `cacheDiagnostics` 与 FORK-PATCH.md。
+    log: (level, message, detail) => {
+      if (level === 'warn') ctx.logger.warn(message, detail)
+    },
   })
 
   // ===== Cline（Cline 桌面端 / Cline API）服务 =====

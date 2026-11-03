@@ -245,6 +245,16 @@ export interface TraeAdapterOptions {
   readImage?: (attachment: unknown) => Promise<{ data: Uint8Array; mediaType: string } | undefined>
   /** 产品配置；默认 {@link TRAE}。 */
   product?: TraeProduct
+  /**
+   * 可选的诊断日志出口（对齐 dingminhua/dsh-connect-trae 的 issue #67）。
+   *
+   * 用来在流结束时打印上游的 `prompt_cache_pool_record` / 管线名 / 实际作答
+   * 模型。**没有它，「缓存恒 0」就无法与「插件丢字段」区分** —— 用户只能
+   * 反复报障「还是没有缓存」，而排查方看不出是上游没给池。
+   *
+   * 不提供时静默跳过，不改变任何对外行为。
+   */
+  log?: (level: 'warn', message: string, detail: Record<string, unknown>) => void
 }
 
 /** 安全读取 Error.message。 */
@@ -1340,6 +1350,18 @@ export class TraeAdapter extends LlmAdapter {
      * 因此本标记只在「一个事件都没收到」时才让调用方重试。
      */
     let sawAnyUpstreamEvent = false
+    /**
+     * 上游诊断事实（`metadata` / `timing_cost` 事件），流结束时统一上报。
+     *
+     * 存在的意义只有一个：让「缓存恒 0」可归因。上游若返回
+     * `prompt_cache_pool_record: null`，说明它**根本没分配前缀缓存池**，
+     * 那么 `cache_read_input_tokens` 必然是 0，与适配器无关。
+     */
+    const cacheDiagnostics: {
+      promptCachePoolRecord?: unknown
+      pipeline?: string
+      providerModelName?: string
+    } = {}
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -1514,19 +1536,21 @@ export class TraeAdapter extends LlmAdapter {
                     // 直接丢了 —— 这是**必须补上**的搬运缺口：上游一旦报了值，
                     // 不搬就等于 DSH 侧恒显示 0。故本处无条件搬运。
                     //
-                    // ⚠️ **但补上搬运不等于缓存会变成非 0**（2026-11-04 实测，
-                    // 别再把「修完还是 0」当成回归）：
-                    // 本机两个账号 × glm-5.2 / deepseek-v4.1-flash /
-                    // Doubao-Seed-2.1-Pro × solo_agent / solo_work_lite，
-                    // 按 dingminhua/dsh-connect-trae 的
-                    // docs/ISSUE10_DIAGNOSIS.md 原样复刻（PREFIX 预热 →
-                    // PREFIX+SUFFIX → 逐字节相同），`prompt_tokens` 精确复现
-                    // 该文档的 5258 / 9224 / 9224，但 `cache_read_input_tokens`
-                    // **恒为 0**，从未出现该文档记录的 5248 / 9216。
-                    // 同机同时段 codearts / qodercn / workbuddy 的
-                    // cacheRead 均非 0，说明 DSH 上报链路本身没问题。
-                    // 结论：本机这条 trae 通道的上游当前**不返回非 0 缓存值**，
-                    // 属上游侧行为，不是适配器缺陷。详见 FORK-PATCH.md。
+                    // ⚠️ **补上搬运不等于缓存会变成非 0**（2026-11-04 已定性，
+                    // 别再把「修完还是 0」当成回归）。根因在上游：
+                    // `metadata.prompt_cache_pool_record` 本机实测三个轮次全部为
+                    // `null`，即上游**根本没给这次请求分配前缀缓存池**；没有池，
+                    // `cache_read_input_tokens` 只能是 0。该事件的处理见下方
+                    // `case 'metadata'`，结论与取证见 FORK-PATCH.md。
+                    //
+                    // 取证：两个账号 × glm-5.2 / deepseek-v4.1-flash /
+                    // Doubao-Seed-2.1-Pro × solo_agent / solo_work_lite，按
+                    // dingminhua/dsh-connect-trae 的 ISSUE10_DIAGNOSIS.md 原样
+                    // 复刻，`prompt_tokens` 精确复现 5258 / 9224 / 9224，但
+                    // `cache_read_input_tokens` 恒为 0（该文档记录的是 5248 /
+                    // 9216）。同机同时段 codearts / qodercn / workbuddy 均非 0，
+                    // 说明 DSH 上报链路本身没问题。上游仓库的 issue #67 用同一
+                    // 脚本原样重跑也得到 0/0/0，结论一致。
                     const cacheReadTokens =
                       typeof ev.usage.cache_read_input_tokens === 'number' ? ev.usage.cache_read_input_tokens : undefined
                     const cacheWriteTokens =
@@ -1546,6 +1570,21 @@ export class TraeAdapter extends LlmAdapter {
                   }
                   break
                 }
+                case 'metadata':
+                case 'timing_cost':
+                  // 纯诊断事件，不产生任何 chunk（不带答案文本、不带 usage），
+                  // 但要把「上游有没有挂缓存池」记下来 —— 这是把「缓存恒 0」
+                  // 归因为上游的唯一证据（见 `TraeSSEEvent.promptCachePoolRecord`）。
+                  //
+                  // ⚠️ 只记录，**绝不**影响流语义：不能让它们算进
+                  // `gotAnyContent`，否则会改变「首个模型事件之前才允许重试」
+                  // 的判定，把本该重试的空响应变成成功。
+                  if (ev.promptCachePoolRecord !== undefined) {
+                    cacheDiagnostics.promptCachePoolRecord = ev.promptCachePoolRecord
+                  }
+                  if (ev.pipeline !== undefined) cacheDiagnostics.pipeline = ev.pipeline
+                  if (ev.providerModelName !== undefined) cacheDiagnostics.providerModelName = ev.providerModelName
+                  break
                 case 'done':
                   if (ev.finishReason !== undefined) {
                     finishReason = ev.finishReason as 'stop' | 'tool_calls' | 'length'
@@ -1796,6 +1835,17 @@ export class TraeAdapter extends LlmAdapter {
     // `stop` 收场 —— 那是 DSH `EMPTY_RESPONSE` 契约明令禁止的静默结束。
     // ⚠️ 传入的是**上面已算好的** `reason`（含 loopDetected / length /
     // 无名 tool-call 等全部既存判据）；helper 只在 `kind === 'stop'` 时改写。
+    // 上报上游诊断事实（不影响任何 chunk）。只在确实收到过诊断事件时才打，
+    // 避免给没有这些事件的通道制造噪声。
+    if (this.options.log !== undefined && Object.keys(cacheDiagnostics).length > 0) {
+      this.options.log('warn', 'trae: upstream request diagnostics', {
+        model: options.model,
+        ...cacheDiagnostics,
+        // 直接给出结论，省得看日志的人再推一遍：
+        // null = 上游没分配前缀缓存池 → cacheRead 必然为 0，与本插件无关。
+        cachePoolAttached: cacheDiagnostics.promptCachePoolRecord !== null,
+      })
+    }
     yield { type: 'finish', reason: resolveEmptyResponseReason(reason, blockCount) }
   }
 }
