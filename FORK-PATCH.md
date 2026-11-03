@@ -1,10 +1,11 @@
 # 本 fork 说明（非官方）
 
 > **这是 [`Ebony-Vinyl/dsh-our-free-model`](https://github.com/Ebony-Vinyl/dsh-our-free-model)
-> 的个人 fork，基于 `v2.5.3` 做两件事：**
+> 的个人 fork，基于 `v2.5.3` 做三件事：**
 >
 > 1. **修好 `buddy`（腾讯 CodeBuddy）渠道的 `code 11128` 拦截**（本 fork 独有）
-> 2. **选择性同步上游与 buddy 无关的修复**（已摘 8 个，见下方「上游同步记录」）
+> 2. **修好 `codearts`（华为 CodeArts）渠道「发消息即报密钥无效」**（本 fork 独有）
+> 3. **选择性同步上游与两者无关的修复**（已摘 8 个，见下方「上游同步记录」）
 >
 > 不是官方发布，不代表上游立场，不提供官方支持，也不会向上游提 PR。
 
@@ -15,9 +16,9 @@
 | 本仓库 | `https://github.com/REALOIYO/dsh-our-free-model` |
 | 维护分支 | **`fix/codebuddy-11128`**（已设为仓库默认分支） |
 | 基线 | tag **`v2.5.3`**（commit `e465d73`） |
-| 提交总数 | **15 个**（1 条 buddy 补丁 + 3 条早期 cherry-pick + 8 条上游同步 + 3 条文档/构建） |
-| 改动规模 | **42 个文件 · +2579 / −694 行**（含重新生成的 `pack.js`） |
-| 验证环境 | DSH **`0.2.1-rc.3`** 桌面版 · Windows 11 · OFM `2.5.3` |
+| 提交总数 | **19 个**（buddy 补丁 2 + codearts 补丁 2 + 早期 cherry-pick 3 + 上游同步 8 + 文档/构建 4） |
+| 改动规模 | **43 个文件 · +3005 / −774 行**（含重新生成的 `pack.js`） |
+| 验证环境 | DSH **`0.2.1-rc.5`** 桌面版 · Windows 11 · OFM `2.5.3` |
 
 `main` 分支只是上游镜像，**不包含任何本 fork 的修改**。
 
@@ -40,6 +41,66 @@
 | 13 | `9c87bf0` | 鱼缸动画暂停（空缸 / 视口外） | 上游同步 |
 | 14 | `da02dad` | 接入 FleetRelay 线上模型网关 | 上游同步 |
 | 15 | `332dcc3` | 旧出口判定失效 + 迟到结果隔离 | 上游同步 |
+| 16 | `f5ec78c` | 文档同步到真实状态 | 本 fork |
+| 17 | `711fdeb` | 补第 3 条腾讯 11128 指纹（@ 路径说明段） | 本 fork |
+| 18 | `793f934` | codearts：去掉会被网关拒绝的 user-agent | **本 fork 独有** |
+| 19 | `bb0d4ef` | codearts：推理档位顺序修正 | **本 fork 独有** |
+
+## codearts 渠道补丁（本 fork 独有）
+
+### 症状
+
+在 DSH 里选 `codearts` 的模型（如 `deepseek-v4.1-flash`）发「你好」，
+直接报**「API 密钥无效」**（错误码 `AUTH`）。
+
+### 根因不是密钥
+
+凭证完全有效。问题出在**宿主注入的 `user-agent`**：
+
+| UA | 结果 |
+|---|---|
+| `deepseek-harness/<ver> (+https://github.com/deepseek-ai/deepseek-harness)` | ❌ 403 `TM.00000001`「网络繁忙」 |
+| 不带 UA | ✅ 200 正常出流 |
+| `codearts` 自己的 UA | ✅ 200 正常出流 |
+
+该 UA 来自 DSH 内核的 `attributionHeaders()`
+（`dsh-llm/lib/types/attribution.js`，只返回一个 `user-agent`）。
+适配器若以 `new Headers(attributionHeaders())` 起手就会带上它，
+华为云 APIG 网关不接受。
+
+> 同仓库的 `buddy-adapter.ts` 早有同类注释（「必须用 set 覆盖
+> `attributionHeaders()` 注入的框架 UA」），`codearts` 这条路径漏了。
+
+### 修法
+
+对齐参考实现 [`elegant01/dsh-codearts`](https://github.com/elegant01/dsh-codearts)
+的 `upstream.ts`：
+
+- 不再以 `attributionHeaders()` 起手，改为裸 `new Headers()`
+- 用 `app-id: CodeAgent3.0` + `is_confidential: false` + `X-Language: zh-cn` 标识客户端
+- 补 `Accept: text/event-stream`
+- `Chat-Id` / `Session-Id` 保持在签名**之后**追加（签进 canonical 会被拒签）
+
+### 附带修正：推理档位顺序
+
+`resolveModel` 的 `efforts` 原为 `['on','off']`，DSH 选择器按数组顺序渲染，
+导致滑块「左=开启、右=关闭」，与其他 provider（左弱右强）相反。
+
+改为 `['off','on']`。`defaultEffort` 仍为 `'on'`，默认行为不变。
+
+### 判据
+
+`~/.dsh/channel-pack/token-ledger.json` 里：
+
+- 修复前：`codearts|deepseek-v4.1-flash` → 4 请求 / 4 错 / 输入输出全 0
+- 修复后：正常出流，输出 token 非 0
+
+### 遗留现象（非本补丁范围）
+
+- **首字延迟偏高**（实测平均 20+ 秒）：CodeArts 服务端排队，与 UA 无关
+- **`TM.00001041 并发会话数已达上限(3个)`**：华为侧按账号限并发，
+  多账号时插件会自动换号；若某账号长期占满，可在 Channel Pack 里把它拖到后面
+
 
 ## 上游同步记录（8 个）
 

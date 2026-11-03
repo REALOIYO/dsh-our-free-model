@@ -5,10 +5,10 @@
 > | 上游 | [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) |
 > | 本仓库 | `REALOIYO/dsh-our-free-model`，维护分支 **`fix/codebuddy-11128`**（默认分支） |
 > | 基线 | **`v2.5.3`**（commit `e465d73`） |
-> | 改动规模 | **15 个提交 · 42 个文件 · +2579 / −694 行**（含重新生成的 `pack.js`） |
-> | 独有改动 | 修 `buddy`（CodeBuddy）渠道被腾讯网关拦截的 `HTTP 400 / code 11128` |
+> | 改动规模 | **19 个提交 · 43 个文件 · +3005 / −774 行**（含重新生成的 `pack.js`） |
+> | 独有改动 | ① 修 `buddy`（CodeBuddy）渠道被腾讯网关拦截的 `HTTP 400 / code 11128`<br>② 修 `codearts`（华为 CodeArts）渠道**发消息即报密钥无效** |
 > | 上游同步 | 已摘 **8 个**与 buddy 无关的上游修复（详见下表） |
-> | 验证环境 | DSH **`0.2.1-rc.3`** 桌面版 · Windows 11 · OFM `2.5.3` |
+> | 验证环境 | DSH **`0.2.1-rc.5`** 桌面版 · Windows 11 · OFM `2.5.3` |
 > | 详情 | **[FORK-PATCH.md](FORK-PATCH.md)** |
 >
 > **安装请认分支**：`github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128`
@@ -18,7 +18,7 @@
 >
 > ---
 >
-> ### 本 fork 维护的两件事
+> ### 本 fork 维护的三件事
 >
 > **一、buddy 渠道补丁（独有）**
 >
@@ -26,7 +26,30 @@
 > `DeepSeek Harness` 字面量指纹，网关逐字符比对命中即拒。本 fork 在 `buddy-adapter.ts`
 > 的出站路径上做清洗（未命中规则时返回原字符串，保住 KV 前缀缓存）。
 >
-> **二、选择性同步上游修复（已摘 8 个）**
+> **二、codearts 渠道补丁（独有）**
+>
+> 修 `codearts`（华为 CodeArts）发消息即报**「API 密钥无效」**的问题。
+> 根因**不是密钥**——是宿主注入的 `user-agent` 被华为云 APIG 网关拒绝：
+>
+> ```
+> user-agent: deepseek-harness/<ver> (+https://github.com/deepseek-ai/deepseek-harness)
+>   → 403 TM.00000001「网络繁忙」
+> 不带 UA / 换成 codearts 自己的 UA
+>   → 200 正常出流
+> ```
+>
+> 该 UA 由 DSH 内核的 `attributionHeaders()` 注入（`dsh-llm/lib/types/attribution.js`），
+> 适配器若直接 `new Headers(attributionHeaders())` 起手就会带上。本 fork 改为裸
+> `Headers()`，用 `app-id: CodeAgent3.0` + `is_confidential: false` + `X-Language: zh-cn`
+> 标识客户端，并对齐参考实现 `elegant01/dsh-codearts` 的请求头集合。
+>
+> 同时修正了推理档位滑块的顺序：`efforts` 原为 `['on','off']`，导致滑块「左开启、右关闭」，
+> 与其他 provider（左弱右强）相反；改为 `['off','on']`。
+>
+> 判据：`token-ledger.json` 里 `codearts|deepseek-v4.1-flash` 修复前 4 请求 4 错、
+> 输入输出全 0；修复后正常出流。
+>
+> **三、选择性同步上游修复（已摘 8 个）**
 >
 > | commit | 内容 | 为什么摘 |
 > |---|---|---|
