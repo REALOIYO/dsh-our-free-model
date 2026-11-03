@@ -1002,11 +1002,16 @@ export class CodeArtsAdapter extends LlmAdapter {
     // 顶层 `thinking.type`。`reasoning_effort`（含 low/high/none/minimal）与
     // 嵌套 `reasoning.effort` 都被服务端接受但**完全无效果**（判据为服务端
     // 上报的 reasoning_tokens，落在基线噪声内；`none` 也照常思考）。
-    // 故这里只声明「开启 / 关闭」两档，**不**臆造 low/high/max 强度阶梯。
+    // 故这里只声明「关闭 / 开启」两档，**不**臆造 low/high/max 强度阶梯。
+    //
+    // ⚠️ 顺序必须是「关闭在前、开启在后」，与其他 provider 一致：
+    // 强度递增（弱→强）是 DSH 选择器滑块的通用语义，见 buddy-adapter 的
+    // REASONING_EFFORTS（`['low','high','max']`）。曾经写成 `['on','off']`，
+    // 滑块就变成「左=开启、右=关闭」，与其他模型正好相反。
     resolved.reasoning = {
       efforts: [
-        { id: ReasoningEffortId('on'), name: '开启' },
         { id: ReasoningEffortId('off'), name: '关闭' },
+        { id: ReasoningEffortId('on'), name: '开启' },
       ],
       defaultEffort: ReasoningEffortId('on'),
     }

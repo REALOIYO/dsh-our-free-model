@@ -33117,8 +33117,8 @@ var CodeArtsAdapter = class extends LlmAdapter {
     if (contextWindow !== void 0) resolved.context = { contextWindow };
     resolved.reasoning = {
       efforts: [
-        { id: ReasoningEffortId("on"), name: "\u5F00\u542F" },
-        { id: ReasoningEffortId("off"), name: "\u5173\u95ED" }
+        { id: ReasoningEffortId("off"), name: "\u5173\u95ED" },
+        { id: ReasoningEffortId("on"), name: "\u5F00\u542F" }
       ],
       defaultEffort: ReasoningEffortId("on")
     };
