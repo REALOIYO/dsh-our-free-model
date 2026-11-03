@@ -102,6 +102,52 @@
   多账号时插件会自动换号；若某账号长期占满，可在 Channel Pack 里把它拖到后面
 
 
+## trae 缓存：字段补了，但上游本机不给值（本 fork 独有）
+
+### 补了什么
+
+`trae-adapter.ts` 的 `token_usage` 分支原先只取 `prompt_tokens` /
+`completion_tokens` / `reasoning_tokens`，把上游那两个**非 OpenAI 标准**的
+`cache_read_input_tokens` / `cache_creation_input_tokens` 直接丢了。
+现已搬运到 `cacheReadTokens` / `cacheWriteTokens`（仅 > 0 时才带，不给
+从不报缓存的模型伪造字段）。
+
+### 但这不是「缓存坏了」的原因
+
+2026-11-04 实测：**补上搬运后本机 trae 的 cacheRead 仍然是 0**。
+
+取证方式：按 `dingminhua/dsh-connect-trae` 的 `docs/ISSUE10_DIAGNOSIS.md`
+原样复刻其复现脚本的请求形态（PREFIX 预热 → PREFIX+SUFFIX → 逐字节相同，
+`role:'user'` 单条消息、无 system），覆盖：
+
+| 维度 | 取值 |
+|---|---|
+| 账号 | `9C00754B`、`8BD69571` |
+| 模型 | `glm-5.2`、`deepseek-v4.1-flash`、`Doubao-Seed-2.1-Pro` |
+| 通道 | `solo_agent`、`solo_work_lite` |
+
+`prompt_tokens` **精确复现**了该文档的 `5258 / 9224 / 9224`，证明请求形态
+与取证条件一致；但 `cache_read_input_tokens` 恒为 0，从未出现该文档记录的
+`5248 / 9216`。同一时刻本机 `codearts` / `qodercn` / `workbuddy` 的
+cacheRead 均非 0，DSH 侧上报链路正常。
+
+原始响应（本机，逐字节）：
+
+```json
+{"name":"","prompt_tokens":9224,"completion_tokens":177,"total_tokens":9401,
+ "cache_creation_input_tokens":0,"cache_read_input_tokens":0,"reasoning_tokens":171,
+ "prompt_tokens_total":0,"completion_tokens_total":0,"total_tokens_total":0,
+ "cache_creation_input_tokens_total":0,"cache_read_input_tokens_total":0,
+ "reasoning_tokens_total":0,"cluster":"normal_context"}
+```
+
+### 结论
+
+- 字段搬运是**必要**的：上游一旦报值，不搬就等于界面恒 0；
+- 但本机这条通道的上游当前**不返回非 0 缓存**，属上游行为，适配器无法凭空造出来；
+- 所以「修完还是 0」不是回归，不要再去翻适配器代码。
+
+
 ## 上游同步记录（8 个）
 
 这 8 个提交与 buddy **无任何交集**，摘入后不改变本 fork 的 buddy 行为：

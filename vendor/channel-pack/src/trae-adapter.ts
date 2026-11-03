@@ -1508,16 +1508,25 @@ export class TraeAdapter extends LlmAdapter {
                     const reasoningTokens = typeof ev.usage.reasoning_tokens === 'number' ? ev.usage.reasoning_tokens : undefined
                     // 缓存计量：上游用 `cache_read_input_tokens` /
                     // `cache_creation_input_tokens` 这两个**非 OpenAI 标准**的
-                    // 名字报，且是 `prompt_tokens` 的子集。
+                    // 名字报，且是 `prompt_tokens` 的子集（OpenAI 口径）。
                     //
                     // 曾经只取 prompt/completion/reasoning 三个字段，把这两个
-                    // 直接丢了 —— 结果 DSH 侧缓存永远显示 0（用户报障「一直 0
-                    // 缓存」）。但上游**确实在缓存**：实测同一段 prompt 连发
-                    // 三次，第三次回 `cache_read_input_tokens: 9216`（不是 0）。
-                    // 丢字段只是让界面看不见，不影响实际命中。
+                    // 直接丢了 —— 这是**必须补上**的搬运缺口：上游一旦报了值，
+                    // 不搬就等于 DSH 侧恒显示 0。故本处无条件搬运。
                     //
-                    // 参考实现见 dingminhua/dsh-connect-trae 的
-                    // docs/ISSUE10_DIAGNOSIS.md（同一条 bug 的取证）。
+                    // ⚠️ **但补上搬运不等于缓存会变成非 0**（2026-11-04 实测，
+                    // 别再把「修完还是 0」当成回归）：
+                    // 本机两个账号 × glm-5.2 / deepseek-v4.1-flash /
+                    // Doubao-Seed-2.1-Pro × solo_agent / solo_work_lite，
+                    // 按 dingminhua/dsh-connect-trae 的
+                    // docs/ISSUE10_DIAGNOSIS.md 原样复刻（PREFIX 预热 →
+                    // PREFIX+SUFFIX → 逐字节相同），`prompt_tokens` 精确复现
+                    // 该文档的 5258 / 9224 / 9224，但 `cache_read_input_tokens`
+                    // **恒为 0**，从未出现该文档记录的 5248 / 9216。
+                    // 同机同时段 codearts / qodercn / workbuddy 的
+                    // cacheRead 均非 0，说明 DSH 上报链路本身没问题。
+                    // 结论：本机这条 trae 通道的上游当前**不返回非 0 缓存值**，
+                    // 属上游侧行为，不是适配器缺陷。详见 FORK-PATCH.md。
                     const cacheReadTokens =
                       typeof ev.usage.cache_read_input_tokens === 'number' ? ev.usage.cache_read_input_tokens : undefined
                     const cacheWriteTokens =
