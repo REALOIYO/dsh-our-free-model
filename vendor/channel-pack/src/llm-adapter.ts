@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import {
-  attributionHeaders, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError,
+  CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError,
   isQuotaExceededError, LlmAdapter, LlmError, QUOTA_EXCEEDED_CODE,
 } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmModelInfo, LlmProviderInfo, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -1159,14 +1159,34 @@ export class CodeArtsAdapter extends LlmAdapter {
         new TextEncoder().encode(body),
         extraSignedHeaders,
       )
-      const headers = new Headers(attributionHeaders())
+      // ⚠️ **不要**用 `new Headers(attributionHeaders())` 起手。
+      //
+      // 宿主内核的 attributionHeaders() 只返回一个 `user-agent`
+      // （dsh-llm/lib/types/attribution.js），值是
+      // `deepseek-harness/<ver> (+https://github.com/deepseek-ai/deepseek-harness)`。
+      // 华为云 APIG 网关拒这个 UA：实测同一账号、同一请求，只改 UA ——
+      //   user-agent: deepseek-harness/... → 403 TM.00000001「网络繁忙」
+      //   不带 UA / codearts 自己的 UA      → 200 正常出流
+      // 表现就是用户在 DSH 里发「你好」直接报鉴权类错误，token 账本里
+      // codearts 的请求 errors 全量、in/out 全 0。
+      //
+      // 参考实现 elegant01/dsh-codearts 的 upstream.ts 同样**不发 UA**，
+      // 改用 `app-id: CodeAgent3.0` 标识客户端。这里照抄。
+      const headers = new Headers()
       // 签名 map 中的额外头（如 maas_type）必须随请求发送——它们已参与
       // canonical 计算、包含在 SignedHeaders 列表中，缺失会导致服务端验签失败。
       signed.forEach((value, key) => { if (key !== 'content-type') headers.set(key, value) })
       headers.set('Content-Type', 'application/json')
+      headers.set('Accept', 'text/event-stream')
+      // 客户端身份：与 CodeArts Agent 一致（不发 UA）。
+      headers.set('app-id', 'CodeAgent3.0')
+      headers.set('is_confidential', 'false')
+      headers.set('X-Language', 'zh-cn')
+      // ⚠️ Chat-Id / Session-Id 必须在**签名之后**追加，不能进 SignedHeaders。
+      // 它们参与会话计数与 prompt cache 亲和，但网关对签进 canonical 的这两个
+      // 头会拒签（参考实现 upstream.ts:664 有同样说明）。
       headers.set('Chat-Id', this.chatId)
       headers.set('Session-Id', this.sessionId)
-      headers.set('lang', 'en')
 
       response = await this.fetchImpl(url, {
         method: 'POST',

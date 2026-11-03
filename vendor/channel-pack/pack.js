@@ -29654,7 +29654,6 @@ import Schema2 from "@deepseek-ai/schemastery";
 
 // vendor/channel-pack/src/llm-adapter.ts
 import {
-  attributionHeaders,
   CONTEXT_WINDOW_EXCEEDED_CODE,
   isContextWindowExceededError,
   isQuotaExceededError,
@@ -33220,14 +33219,17 @@ var CodeArtsAdapter = class extends LlmAdapter {
         new TextEncoder().encode(body),
         extraSignedHeaders
       );
-      const headers = new Headers(attributionHeaders());
+      const headers = new Headers();
       signed.forEach((value, key) => {
         if (key !== "content-type") headers.set(key, value);
       });
       headers.set("Content-Type", "application/json");
+      headers.set("Accept", "text/event-stream");
+      headers.set("app-id", "CodeAgent3.0");
+      headers.set("is_confidential", "false");
+      headers.set("X-Language", "zh-cn");
       headers.set("Chat-Id", this.chatId);
       headers.set("Session-Id", this.sessionId);
-      headers.set("lang", "en");
       response = await this.fetchImpl(url, {
         method: "POST",
         headers,
@@ -33777,7 +33779,7 @@ function parseRateLimitError(body, currentModel, status) {
 
 // vendor/channel-pack/src/buddy-adapter.ts
 import {
-  attributionHeaders as attributionHeaders2,
+  attributionHeaders,
   CONTEXT_WINDOW_EXCEEDED_CODE as CONTEXT_WINDOW_EXCEEDED_CODE2,
   isContextWindowExceededError as isContextWindowExceededError2,
   LlmAdapter as LlmAdapter2,
@@ -35665,7 +35667,7 @@ var BuddyAdapter = class _BuddyAdapter extends LlmAdapter2 {
   }
   /** 发起一次 chat 请求；网络失败映射为可重试的 TRANSPORT 错误。 */
   async send(credential, body, options) {
-    const headers = new Headers(attributionHeaders2());
+    const headers = new Headers(attributionHeaders());
     headers.set("Authorization", `Bearer ${credential.access_token}`);
     headers.set("Accept", "text/event-stream");
     headers.set("Content-Type", "application/json");
