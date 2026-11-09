@@ -17,7 +17,7 @@
 | This repo | `https://github.com/REALOIYO/dsh-our-free-model` |
 | Maintained branch | **`fix/codebuddy-11128`** (set as the repository default) |
 | Baseline | tag **`v2.5.3`** (commit `e465d73`) |
-| Commits | **15** (1 buddy patch + 3 early cherry-picks + 8 upstream syncs + 3 docs/build) |
+| Commits | **26** (2 buddy patches + 2 codearts patches + 3 trae attribution + 3 early cherry-picks + 11 upstream syncs + 5 docs/build) |
 | Diff size | **42 files · +2579 / −694 lines** (including the regenerated `pack.js`) |
 | Verified on | DSH **`0.2.1-rc.3`** desktop · Windows 11 · OFM `2.5.3` |
 
@@ -64,7 +64,7 @@ None of these touch buddy, so taking them leaves this fork's buddy behaviour unc
 ## ⚠️ Divergence from upstream
 
 Upstream **removed both the `buddy` (CodeBuddy CN) and `workbuddy` (INTL) channels**
-starting with `v2.5.8` (PR #555, #577).
+starting with `v2.6.0` (commit `da48714`, PR #555, #577).
 
 Upstream's stated reasons:
 
@@ -162,7 +162,7 @@ Bisecting a real 11KB system prompt against `copilot.tencent.com`:
 
 ## Why the baseline is pinned to v2.5.3
 
-Upstream `v2.5.8` deleted `vendor/channel-pack/src/buddy-adapter.ts` and
+Upstream `v2.6.0` deleted `vendor/channel-pack/src/buddy-adapter.ts` and
 `vendor/channel-pack/src/openai-gateway/tencent-fingerprint.ts` outright (PR #555
 retired the channels, PR #577 removed the leftovers), and the PR that would restore
 them (**#574**) is **closed, not merged**.
@@ -170,7 +170,7 @@ them (**#574**) is **closed, not merged**.
 The files this patch touches do not exist on `main`, so there is nothing to rebase
 onto. Hence `v2.5.3`.
 
-**Trade-off**: upstream changes after `v2.5.8` are not included. When you need a
+**Trade-off**: upstream changes after `v2.5.3` are not included. When you need a
 specific upstream fix, `cherry-pick` it. **Never `merge upstream/main`** — that drags
 the channel deletion along.
 

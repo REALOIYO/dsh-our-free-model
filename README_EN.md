@@ -48,7 +48,7 @@
 > ### ⚠️ Divergence from upstream
 >
 > Upstream **removed both the `buddy` (CodeBuddy CN) and `workbuddy` (INTL) channels**
-> starting with `v2.5.8` (PR #555, #577). Reasons per upstream: issue #576 "legal letter"
+> starting with `v2.6.0` (commit `da48714`, PR #555, #577). Reasons per upstream: issue #576 "legal letter"
 > and issue #624's maintainer reply about aggressive risk control.
 >
 > **This fork deliberately keeps both channels.** Channel count is **13** here versus

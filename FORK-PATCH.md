@@ -5,7 +5,8 @@
 >
 > 1. **修好 `buddy`（腾讯 CodeBuddy）渠道的 `code 11128` 拦截**（本 fork 独有）
 > 2. **修好 `codearts`（华为 CodeArts）渠道「发消息即报密钥无效」**（本 fork 独有）
-> 3. **选择性同步上游与两者无关的修复**（已摘 8 个，见下方「上游同步记录」）
+> 3. **选择性同步上游与两者无关的修复**（已摘 11 个，见下方「上游同步记录」与
+>    「第二轮上游同步」）
 >
 > 不是官方发布，不代表上游立场，不提供官方支持，也不会向上游提 PR。
 
@@ -16,9 +17,9 @@
 | 本仓库 | `https://github.com/REALOIYO/dsh-our-free-model` |
 | 维护分支 | **`fix/codebuddy-11128`**（已设为仓库默认分支） |
 | 基线 | tag **`v2.5.3`**（commit `e465d73`） |
-| 提交总数 | **19 个**（buddy 补丁 2 + codearts 补丁 2 + 早期 cherry-pick 3 + 上游同步 8 + 文档/构建 4） |
-| 改动规模 | **43 个文件 · +3005 / −774 行**（含重新生成的 `pack.js`） |
-| 验证环境 | DSH **`0.2.1-rc.5`** 桌面版 · Windows 11 · OFM `2.5.3` |
+| 提交总数 | **26 个**（buddy 补丁 2 + codearts 补丁 2 + trae 归因 3 + 早期 cherry-pick 3 + 上游同步 11 + 文档/构建 5） |
+| 改动规模 | **49 个文件 · +3512 / −559 行**（含重新生成的 `pack.js`） |
+| 验证环境 | DSH **`0.2.2-rc.1`** 桌面版 · Windows 11 · OFM `2.5.3` |
 
 `main` 分支只是上游镜像，**不包含任何本 fork 的修改**。
 
@@ -45,6 +46,13 @@
 | 17 | `711fdeb` | 补第 3 条腾讯 11128 指纹（@ 路径说明段） | 本 fork |
 | 18 | `793f934` | codearts：去掉会被网关拒绝的 user-agent | **本 fork 独有** |
 | 19 | `bb0d4ef` | codearts：推理档位顺序修正 | **本 fork 独有** |
+| 20 | `8171ddb` | 文档补上 codearts 渠道补丁 | 本 fork |
+| 21 | `1db7894` | trae：缓存字段被丢弃（搬运） | **本 fork 独有** |
+| 22 | `5288653` | trae：记录上游本机不返回值（文档） | 本 fork |
+| 23 | `beb3b27` | trae：解码 metadata/timing_cost 归因 | **本 fork 独有** |
+| 24 | `6b891f6` | 16 个 provider 补 modelsUrl | 上游同步（#538） |
+| 25 | `df99b5e` | ChannelNetworkError 补 code | 上游同步（#650） |
+| 26 | `9cc2e90` | trae：命中量从 inputTokens 扣除 | 上游同步（#675）+ 本 fork 合并 |
 
 ## codearts 渠道补丁（本 fork 独有）
 
@@ -176,7 +184,7 @@ timing_cost: name=llm_raw_chat_v2 provider_model_name=glm-5.2
   即可确认当时的真实情况。
 
 
-## 上游同步记录（8 个）
+## 上游同步记录（第一轮，8 个）
 
 这 8 个提交与 buddy **无任何交集**，摘入后不改变本 fork 的 buddy 行为：
 
@@ -194,10 +202,40 @@ timing_cost: name=llm_raw_chat_v2 provider_model_name=glm-5.2
 > 早期 cherry-pick 的 `ebba3c2` / `8782fa3` / `caf8b96` 三项，对应上游 #484 / #472 / #503，
 > **patch-id 与上游完全一致**，属于原样搬入。
 
+## 第二轮上游同步（3 个，2026-11-09）
+
+上游此时已到 `2.9.0`，与本地 `v2.5.3` 基线相距 263 个提交。`src/` 层面本地比上游
+少 14,445 行（magpie 工作台、扩展市场、订阅车道、o2a 移植层整块缺失），**不具备
+整包合并的条件**，仍按挑摘处理。
+
+| commit | 上游原件 | 原作者 | 内容 |
+|---|---|---|---|
+| `6b891f6` | `2dbaa3c`（#538） | popofthedead | 16 个 provider 补 `modelsUrl`，消除「无模型列表」误报 |
+| `df99b5e` | `36757bd`（#650，Fixes #587） | 在虎 | `ChannelNetworkError` 补 `code`，瞬时网络失败可重试 |
+| `9cc2e90` | `fe00e9d`（#675，#213） | Rahul | trae 命中量从 `inputTokens` 扣除，修正重复计价 |
+
+三条的取舍说明：
+
+- **modelsUrl**：缺该字段时 `modelsEndpoint()` 返回 null，`fetchProviderModels()`
+  直接退出，`testProvider()` 报「declares no model listing, so its key cannot be
+  verified」——把「无法验证密钥」误读成「密钥无效」。纯数据补全，改动最小。
+- **网络错误重试**：`networkFailure()` 把 ECONNRESET / ETIMEDOUT 只拼进文案，
+  没写到错误对象的 `code`，DSH 记为 `UNKNOWN`，而 `UNKNOWN` 不在重试白名单
+  （`EMPTY_RESPONSE` / `RATE_LIMIT` / `SERVER` / `TIMEOUT` / `TRANSPORT`）里，
+  一次瞬时抖动就终结整个轮次。
+- **trae 计费**：上游修复与本地 `1db7894` 做的是同一件事，但**本地少了一步**。
+  `prompt_tokens` 是含命中的总量，本地直接拿它当 `inputTokens`，命中量被当未命中
+  输入再算一次钱。上游把命中量从 `inputTokens` 扣除、单列 `cacheReadTokens`。
+  本 fork 已有的 `metadata/timing_cost` 解码与 `prompt_cache_pool_record` 归因
+  上游没有，两条不重叠，是合并而非替换。
+
+> 摘取时三项都补了 `Co-authored-by` 指向原作者。代码内容与上游对应提交逐条比对过，
+> 除 trae 那条需与本地诊断共存外，其余为原样搬入。
+
 ## ⚠️ 与上游的策略分歧
 
-上游自 `v2.5.8` 起**移除了 `buddy`（CodeBuddy 国内版）与 `workbuddy`（国际版）两个渠道**
-（PR #555、#577）。
+上游自 **`v2.6.0`**（提交 `da48714`）起**移除了 `buddy`（CodeBuddy 国内版）与
+`workbuddy`（国际版）两个渠道**（PR #555、#577）。
 
 移除原因（上游自己的说明）：
 
@@ -216,19 +254,27 @@ timing_cost: name=llm_raw_chat_v2 provider_model_name=glm-5.2
 
 **这是预期差异，不是 bug。** 若看到渠道数与上游不同，属正常。
 
-## ⚠️ 安装 / 更新注意
+## ⚠️ 版本号与安装
 
-本仓库 `package.json` 的版本号仍是 `2.5.3`，但**内容已不同于上游同版本**。
-`v2.5.3` 这个号只表示基线来源，不表示与上游该 tag 完全一致。
+本仓库 `package.json` 的版本号仍是 **`2.5.3`**，且**刻意不跟随上游递增**。
 
-- **安装**：认分支 `#fix/codebuddy-11128`
-  ```
-  github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128
-  ```
-  **不要用 `main`** —— 那是纯上游镜像，不含任何本 fork 改动
+原因：这个号的语义是「基线来源」，不是「发行版本」。上游已到 `2.9.0`，本地内容与它
+相差 263 个提交的选摘，既不能表示成 `2.5.4` 也不能表示成 `2.9.0`；任何一种递增都会
+误导使用者以为本 fork 跟上了对应上游版本。
+
+因此**靠 commit 区分，不靠版本号**。安装时认分支或具体 commit：
+
+```
+github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128
+```
+
+**不要用 `main`** —— 那是纯上游镜像，不含任何本 fork 改动。
+
 - **已在用的人**：若执行 `pnpm install` / `pnpm update`，插件会被 pnpm 按
-  `dependencies` 里的 specifier 还原成上游原版，**buddy 补丁与 8 个修复会全部丢失**。
-  届时需重新安装本分支。
+  `dependencies` 里的 specifier 还原成上游原版，**buddy / codearts 补丁与全部修复
+  会丢失**。届时需重新安装本分支。
+- **锁定版本的可选做法**：把 specifier 写成具体 commit
+  （`github:REALOIYO/dsh-our-free-model#<sha>`），避免分支后续推进时被动升级。
 
 ## 为什么要做这个 fork
 
@@ -285,14 +331,16 @@ INVALID_REQUEST
 
 ## 为什么基线锁 v2.5.3
 
-上游 `v2.5.8` 已通过 PR #577 把 `vendor/channel-pack/src/buddy-adapter.ts`、
+上游 **`v2.6.0`**（提交 `da48714`）已通过 PR #577 把 `vendor/channel-pack/src/buddy-adapter.ts`、
 `vendor/channel-pack/src/openai-gateway/tencent-fingerprint.ts` **整个删除**
 （`#555` 退役渠道，`#577` 清理残留），而恢复渠道的 PR **#574 是 closed 未合并**。
 
 补丁要改的文件在 `main` 上不存在，rebase 无处落。所以本分支从 `v2.5.3` 起。
 
-**代价**：拿不到 `v2.5.8` 之后的上游改动。需要某个上游修复时，用 `cherry-pick`
-单独挑，**不要 `merge upstream/main`**（会把渠道删除一起带进来）。
+**代价**：拿不到 `v2.6.0` 之后的上游改动。需要某个上游修复时，用 `cherry-pick`
+单独挑，**不要 `merge upstream/main`**（会把渠道删除一起带进来）。截至 2026-11-09
+上游已到 `2.9.0`，与本基线相距 263 个提交，差异集中在 magpie 工作台、扩展市场、
+订阅车道、o2a 移植层，均与渠道无关，继续按需挑摘即可。
 
 ## 安装
 

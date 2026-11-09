@@ -5,16 +5,37 @@
 > | 上游 | [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) |
 > | 本仓库 | `REALOIYO/dsh-our-free-model`，维护分支 **`fix/codebuddy-11128`**（默认分支） |
 > | 基线 | **`v2.5.3`**（commit `e465d73`） |
-> | 改动规模 | **19 个提交 · 43 个文件 · +3005 / −774 行**（含重新生成的 `pack.js`） |
-> | 独有改动 | ① 修 `buddy`（CodeBuddy）渠道被腾讯网关拦截的 `HTTP 400 / code 11128`<br>② 修 `codearts`（华为 CodeArts）渠道**发消息即报密钥无效** |
-> | 上游同步 | 已摘 **8 个**与 buddy 无关的上游修复（详见下表） |
-> | 验证环境 | DSH **`0.2.1-rc.5`** 桌面版 · Windows 11 · OFM `2.5.3` |
+> | 改动规模 | **26 个提交 · 49 个文件 · +3512 / −559 行**（含重新生成的 `pack.js`） |
+> | 独有改动 | ① 修 `buddy`（CodeBuddy）渠道被腾讯网关拦截的 `HTTP 400 / code 11128`<br>② 修 `codearts`（华为 CodeArts）渠道**发消息即报密钥无效**<br>③ trae 缓存归因（解码 `metadata` / `timing_cost`） |
+> | 上游同步 | 已摘 **11 个**与 buddy 无关的上游修复（详见下表） |
+> | 验证环境 | DSH **`0.2.2-rc.1`** 桌面版 · Windows 11 · OFM `2.5.3` |
 > | 详情 | **[FORK-PATCH.md](FORK-PATCH.md)** |
 >
 > **安装请认分支**：`github:REALOIYO/dsh-our-free-model#fix/codebuddy-11128`
 >
+> **版本号说明**：`package.json` 固定为 `2.5.3`，表示基线来源而非发行版本。本 fork
+> 内容与上游同号 tag 不同，也刻意不跟随上游递增（上游已到 `2.9.0`）。区分版本请认
+> commit，不要认 version 字段。
+>
 > 下方为上游原始 README，其中 **插件市场入口、交流群、赞助、更新渠道均指向上游**，
 > 本 fork 不提供官方支持。本 fork 的实际能力与边界以 `FORK-PATCH.md` 为准。
+>
+> ---
+>
+> ### 致谢
+>
+> 本 fork 的所有渠道实现来自上游 [Ebony-Vinyl/dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model)
+> 及其贡献者。第二轮同步摘入的三项修复，原作者为：
+>
+> | 修复 | 原作者 | 上游 PR |
+> |---|---|---|
+> | 16 个 provider 补 `modelsUrl` | [popofthedead](https://github.com/popofthedead) | #538 |
+> | `ChannelNetworkError` 补 `code` | [在虎](https://github.com/caiths) | #650 |
+> | trae 命中量不计入 `inputTokens` | [Rahul](https://github.com/rahul05ranjan) | #675 |
+>
+> trae 的缓存池归因取证参照了 [dingminhua/dsh-connect-trae](https://github.com/dingminhua/dsh-connect-trae)
+> 的 `docs/ISSUE10_DIAGNOSIS.md`；codearts 渠道修法对齐了
+> [elegant01/dsh-codearts](https://github.com/elegant01/dsh-codearts) 的参考实现。
 >
 > ---
 >
@@ -49,7 +70,7 @@
 > 判据：`token-ledger.json` 里 `codearts|deepseek-v4.1-flash` 修复前 4 请求 4 错、
 > 输入输出全 0；修复后正常出流。
 >
-> **三、选择性同步上游修复（已摘 8 个）**
+> **三、选择性同步上游修复（已摘 11 个）**
 >
 > | commit | 内容 | 为什么摘 |
 > |---|---|---|
@@ -61,26 +82,32 @@
 > | `577702b` | 新增视觉特效开关 | 界面可关动画 |
 > | `9c87bf0` | 鱼缸动画暂停（空缸 / 视口外） | 降低空闲占用 |
 > | `da02dad` | 接入 FleetRelay 线上模型网关 | 新增渠道 |
+> | `6b891f6` | 16 个 provider 补 `modelsUrl` | 消除「无模型列表，密钥无法验证」误报（#538） |
+> | `df99b5e` | `ChannelNetworkError` 补 `code` | 瞬时网络抖动不再直接终结整轮（#650） |
+> | `9cc2e90` | trae 命中量不计入 `inputTokens` | 修正重复计价，命中率不再恒为 0（#675） |
 >
 > 早期还 cherry-pick 了三个上游修复（`ebba3c2` / `8782fa3` / `caf8b96`），
 > 对应上游 #484 / #472 / #503，**patch-id 完全一致**。
 >
 > ### ⚠️ 与上游的策略分歧
 >
-> 上游自 `v2.5.8` 起**移除了 `buddy`（CodeBuddy 国内版）与 `workbuddy`（国际版）两个渠道**
-> （PR #555、#577）。原因见上游 issue #576「律师函」与 #624 的维护者回复（风控加剧）。
+> 上游自 **`v2.6.0`**（提交 `da48714`）起**移除了 `buddy`（CodeBuddy 国内版）与
+> `workbuddy`（国际版）两个渠道**（PR #555、#577）。原因见上游 issue #576「律师函」
+> 与 #624 的维护者回复（风控加剧）。
 >
 > **本 fork 主动保留这两个渠道**，不跟随上游的移除动作。
 > 因此本 fork 的渠道数为 13，上游为 10 —— 这是**预期差异，不是 bug**。
 >
-> ### ⚠️ 安装 / 更新注意
+> ### ⚠️ 版本号与安装
 >
-> 本仓库 `package.json` 的版本号仍是 `2.5.3`，但内容已不同于上游同版本。
+> `package.json` 固定为 **`2.5.3`**，表示基线来源而非发行版本，也刻意不跟随上游递增
+> （上游已到 `2.9.0`）。区分版本请认 commit。
 >
 > - 安装：认分支 `#fix/codebuddy-11128`，**不要用 `main`**
 >   （`main` 是纯上游镜像，不含任何本 fork 改动）
+> - 需要锁定版本时可写具体 commit：`github:REALOIYO/dsh-our-free-model#<sha>`
 > - 已在用的人若执行 `pnpm install` / `pnpm update`，插件会被还原为上游原版，
->   **buddy 补丁与 8 个修复会全部丢失** —— 需要重新安装本分支
+>   **buddy / codearts 补丁与全部修复会丢失** —— 需要重新安装本分支
 >
 > ---
 
