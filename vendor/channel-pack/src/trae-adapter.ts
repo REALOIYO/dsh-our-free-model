@@ -568,6 +568,26 @@ function traeStreamErrorMessage(code: number, message: string, model: string): s
     + '自定义模型（需先在 TRAE IDE 内自行配置供应商），请改用模型列表中的其它模型'
 }
 
+/**
+ * Trae 用量帧里的缓存命中量（摘自上游 fe00e9d，#675 / #213）。
+ *
+ * 上游实测发的是 Anthropic 口径的 `cache_read_input_tokens`（写入量在
+ * `cache_creation_input_tokens`），不是 `openai-compat.ts` 读的 OpenAI 口径。
+ * 三处来源按优先级取首个有值的，兼容其它 Trae 端点沿用 OpenAI 拼写的可能。
+ */
+function traeCacheReadTokens(usage: Record<string, unknown>): number {
+  const anthropic = usage.cache_read_input_tokens
+  if (typeof anthropic === 'number' && anthropic > 0) return anthropic
+  const details = usage.prompt_tokens_details
+  if (details != null && typeof details === 'object') {
+    const cached = (details as { cached_tokens?: unknown }).cached_tokens
+    if (typeof cached === 'number' && cached > 0) return cached
+  }
+  const openai = usage.prompt_cache_hit_tokens
+  if (typeof openai === 'number' && openai > 0) return openai
+  return 0
+}
+
 /** 传输级错误判定。 */
 function isTransportError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
@@ -1557,10 +1577,16 @@ export class TraeAdapter extends LlmAdapter {
                       typeof ev.usage.cache_creation_input_tokens === 'number'
                         ? ev.usage.cache_creation_input_tokens
                         : undefined
+                    // 计费口径修正（摘自上游 fe00e9d，#675）：`prompt_tokens` 是
+                    // **含缓存**的总量（上游实测 4233 里含 4224 命中），所以
+                    // `inputTokens` 只计未命中部分，命中量单列 `cacheReadTokens`
+                    // —— 与 openai-compat.ts 的 DSH 口径一致。否则命中率恒为 0、
+                    // 账本全按 cacheMiss 计价（deepseek-v4.1-flash 峰时差 50 倍）。
+                    const cachedByTrae = traeCacheReadTokens(ev.usage as Record<string, unknown>)
                     yield {
                       type: 'usage',
                       usage: {
-                        inputTokens: promptTokens,
+                        inputTokens: cachedByTrae > 0 ? promptTokens - cachedByTrae : promptTokens,
                         outputTokens: completionTokens,
                         ...reasoningTokens !== undefined && reasoningTokens > 0 ? { reasoningTokens } : {},
                         ...cacheReadTokens !== undefined && cacheReadTokens > 0 ? { cacheReadTokens } : {},
