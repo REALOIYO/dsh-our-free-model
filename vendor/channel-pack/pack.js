@@ -32620,6 +32620,10 @@ var CHAT_API_BASE = "https://snap-access.cn-north-4.myhuaweicloud.com/api/v2";
 var PROVIDER = "codearts";
 var BENEFIT_NOT_FOUND_CODE = "BENEFIT_NOT_FOUND";
 var CODEARTS_BENEFIT_NOT_FOUND_ERROR_CODE = "InferHub.4004.200";
+var CODEARTS_API_UNPUBLISHED_PATTERN = /does not exist or has not been published/i;
+function isCodeArtsApiUnpublished(text) {
+  return CODEARTS_API_UNPUBLISHED_PATTERN.test(text);
+}
 var DEFAULT_MODELS = [
   "GLM-5.2",
   "GLM-5.1",
@@ -33473,6 +33477,9 @@ var CodeArtsAdapter = class extends LlmAdapter {
               throw new SseQueueRetryError(data.error_code, message2);
             }
             if (data.error_code === CODEARTS_BENEFIT_NOT_FOUND_ERROR_CODE) {
+              throw new LlmError2(`codearts: ${message2}`, BENEFIT_NOT_FOUND_CODE, { status: 200 });
+            }
+            if (isCodeArtsBenefitModel(options.model) && isCodeArtsApiUnpublished(message2)) {
               throw new LlmError2(`codearts: ${message2}`, BENEFIT_NOT_FOUND_CODE, { status: 200 });
             }
             throw new LlmError2(`codearts: ${message2}`, "INVALID_REQUEST", { status: 200 });

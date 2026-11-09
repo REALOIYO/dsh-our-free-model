@@ -34,6 +34,30 @@ const BENEFIT_NOT_FOUND_CODE = 'BENEFIT_NOT_FOUND'
 /** CodeArts 在账号没有 benefit 包时下发的事件 error_code。 */
 const CODEARTS_BENEFIT_NOT_FOUND_ERROR_CODE = 'InferHub.4004.200'
 
+/**
+ * benefit 通道的 API 发布不存在时，网关下发的文案。
+ *
+ * 与「账号没有 benefit 包」是**不同的原因、相同的对策**：两者都只对带了
+ * `maas_type: benefit` 的请求成立，去掉该头重试即可能恢复。所以共用
+ * {@link BENEFIT_NOT_FOUND_CODE} 走同一条降级路径。
+ *
+ * 实测（2026-11-10）：同一账号、同一端点、同一 `app-id`，
+ * `GLM-5.2`（非 benefit）正常出流，而 `glm-5.3-flash` 与
+ * `deepseek-v4.1-flash`（两者均在 benefit 集合内）全部失败，
+ * 账本 `token-ledger.json` 记为 `req N / err N / in 0 / out 0`。
+ * 说明上游把带该签名头的那次 API 发布撤了，而不是账号或凭据的问题——
+ * 无签名 curl 同一路径返回 `401 APIG.0301`，路由本身仍在。
+ *
+ * 报文形态：HTTP 200 + SSE 内嵌 `error_code`，没有 APIG 编号，只有文案。
+ * 因此只能按文案匹配；片段取到足以排他的长度，避免误伤别的「不存在」类报错。
+ */
+const CODEARTS_API_UNPUBLISHED_PATTERN = /does not exist or has not been published/i
+
+/** 该错误是否表示 benefit 通道对应的 API 发布已不存在。 */
+function isCodeArtsApiUnpublished(text: string): boolean {
+  return CODEARTS_API_UNPUBLISHED_PATTERN.test(text)
+}
+
 // DeepSeek V4（CodeArts Agent 模型列表新增，UI 标注"每日 1000 万免费 Tokens"福利）：
 //
 // 修正（2026-09-23，对齐 deveco-code-rust fb1b4a2）：早期注释称
@@ -1686,6 +1710,12 @@ export class CodeArtsAdapter extends LlmAdapter {
             }
             if (data.error_code === CODEARTS_BENEFIT_NOT_FOUND_ERROR_CODE) {
               // 账号没有 benefit 包（积分制账户）：交给 stream() 去掉该头重试
+              throw new LlmError(`codearts: ${message}`, BENEFIT_NOT_FOUND_CODE, { status: 200 })
+            }
+            if (isCodeArtsBenefitModel(options.model) && isCodeArtsApiUnpublished(message)) {
+              // benefit 通道的 API 发布已不存在（2026-11-10 起）：成因不同，
+              // 对策相同——去掉 `maas_type: benefit` 再试一次。只对 benefit
+              // 模型生效，非 benefit 模型发这个错说明是别的问题，照常抛出。
               throw new LlmError(`codearts: ${message}`, BENEFIT_NOT_FOUND_CODE, { status: 200 })
             }
             throw new LlmError(`codearts: ${message}`, 'INVALID_REQUEST', { status: 200 })
